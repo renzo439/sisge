@@ -24,7 +24,6 @@ El proyecto usa Maven Wrapper, por lo que no es necesario instalar Maven globalm
    MYSQL_USER=sisge
    MYSQL_PASSWORD=una-clave-local-segura
    MYSQL_ROOT_PASSWORD=otra-clave-local-segura
-   DB_PASSWORD=una-clave-local-segura
    JWT_SECRET=un-secreto-aleatorio-de-al-menos-32-caracteres
    BOOTSTRAP_ADMIN_EMAIL=admin@example.com
    BOOTSTRAP_ADMIN_PASSWORD=una-clave-de-administrador-segura
@@ -36,7 +35,7 @@ El proyecto usa Maven Wrapper, por lo que no es necesario instalar Maven globalm
    docker compose up --build
    ```
 
-La API quedará disponible en `http://localhost:8080`. MySQL ejecuta automáticamente `database/01-schema.sql` y `database/02-reference-data.sql` solo al crear el volumen `mysql-data` por primera vez.
+La API quedará disponible en `http://localhost:8080`. MySQL ejecuta automáticamente `database/01-schema.sql` y `database/02-reference-data.sql` solo al crear el volumen `mysql-data` por primera vez. La aplicación usa automáticamente `MYSQL_PASSWORD` para conectarse a MySQL, por lo que no debe definir `DB_PASSWORD` cuando usa Docker.
 
 > No elimine ni reinicialice el volumen de MySQL si contiene datos que desea conservar.
 
