@@ -1,0 +1,3 @@
+package com.sisge.ms.entity;
+import jakarta.persistence.*; import java.util.*;
+@Entity @Table(name="roles") public class Rol { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @Column(nullable=false,unique=true) private String nombre; private String descripcion; @Column(name="global_role",nullable=false) private boolean globalRol; @ManyToMany(fetch=FetchType.EAGER) @JoinTable(name="rol_permisos",joinColumns=@JoinColumn(name="rol_id"),inverseJoinColumns=@JoinColumn(name="permiso_id")) private Set<Permission> permisos=new HashSet<>(); public String getNombre(){return nombre;} public boolean isGlobalRole(){return globalRol;} public Set<Permission> getPermisos(){return permisos;} }
