@@ -5,9 +5,9 @@ import java.io.*; import java.time.LocalDate; import org.apache.poi.xssf.usermod
 
 class ExcelImportParserTests {
  private final ExcelImportParser parser=new ExcelImportParser();
- private static final String[] HEADERS={"Reemplazante","CUIL","Categoria","Instr.Legal","Periodo Desde","Periodo Hasta","A pagar","A deuda","Titular","Categoria.1","Licencia Desde","Licencia Hasta","Cantidad dias","Tipo de Licencia"};
+ private static final String[] HEADERS={"Reemplazante","CUIL","Categoria","Instr.Legal","Periodo Desde","Periodo Hasta","A pagar","A deuda","Titular","Categoria","Licencia Desde","Licencia Hasta","Cantidad dias","Tipo de Licencia"};
  @Test void parsesValidRowAndPreservesOriginalLicense() throws Exception {
-  try(var wb=workbook(true);var out=new ByteArrayOutputStream()){wb.write(out);var rows=parser.parse(new ByteArrayInputStream(out.toByteArray()));assertEquals(1,rows.size());var row=rows.get(0);assertEquals("Licencia Excel",row.getTipoLicenciaExcel());assertEquals(LocalDate.of(2026,1,1),row.getPeriodoDesde());assertTrue(row.getErrores().isBlank());}
+  try(var wb=workbook(true);var out=new ByteArrayOutputStream()){wb.write(out);var rows=parser.parse(new ByteArrayInputStream(out.toByteArray()));assertEquals(1,rows.size());var row=rows.get(0);assertEquals("Cat",row.getCategoriaReemplazante());assertEquals("Cat Titular",row.getCategoriaTitular());assertEquals("Licencia Excel",row.getTipoLicenciaExcel());assertEquals(LocalDate.of(2026,1,1),row.getPeriodoDesde());assertTrue(row.getErrores().isBlank());}
  }
  @Test void rejectsMissingRequiredHeader() throws Exception {
   try(var wb=workbook(false);var out=new ByteArrayOutputStream()){wb.write(out);assertThrows(ApiException.class,()->parser.parse(new ByteArrayInputStream(out.toByteArray())));}
