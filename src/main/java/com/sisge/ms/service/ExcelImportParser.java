@@ -1,7 +1,7 @@
 package com.sisge.ms.service;
 import java.io.*; import java.math.*; import java.time.*; import java.util.*; import org.apache.poi.ss.usermodel.*; import org.apache.poi.xssf.usermodel.XSSFWorkbook; import org.springframework.stereotype.Component; import com.sisge.ms.exception.ApiException; import com.sisge.ms.entity.ImportacionReemplazante;
 @Component public class ExcelImportParser {
- private static final List<String> HEADERS=List.of("Reemplazante","CUIL","Categoria","Instr.Legal","Periodo Desde","Periodo Hasta","A pagar","A deuda","Titular","Categoria.1","Licencia Desde","Licencia Hasta","Cantidad dias","Tipo de Licencia");
+ private static final List<String> HEADERS=List.of("Reemplazante","CUIL","Categoria","Instr.Legal","Periodo Desde","Periodo Hasta","A pagar","A deuda","Titular","Categoria","Licencia Desde","Licencia Hasta","Cantidad dias","Tipo de Licencia");
  public List<ImportacionReemplazante> parse(InputStream in) {
   try(Workbook wb=new XSSFWorkbook(in)){ Sheet s=wb.getNumberOfSheets()==0?null:wb.getSheetAt(0); if(s==null||s.getPhysicalNumberOfRows()<2) throw ApiException.bad("The workbook is empty");
    Row header=s.getRow(s.getFirstRowNum()); Map<String,Integer> cols=new HashMap<>(); for(Cell c:header)cols.put(text(c),c.getColumnIndex()); for(String h:HEADERS)if(!cols.containsKey(h))throw ApiException.bad("Missing required header: "+h);

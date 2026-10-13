@@ -9,6 +9,12 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     ports: ["3306:3306"]
     volumes: [mysql-data:/var/lib/mysql, ./database:/docker-entrypoint-initdb.d:ro]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
   app:
     build: .
     env_file: .env
@@ -17,5 +23,7 @@ services:
       DB_USERNAME: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
     ports: ["8080:8080"]
-    depends_on: [mysql]
+    depends_on:
+      mysql:
+        condition: service_healthy
 volumes: { mysql-data: {} }

@@ -1,6 +1,7 @@
 package com.sisge.ms.security;
 
 import com.sisge.ms.entity.Usuario;
+import com.sisge.ms.exception.ApiException;
 import com.sisge.ms.repository.UserOrganizationRepository;
 import com.sisge.ms.repository.UserRepository;
 import java.util.HashMap;
@@ -8,6 +9,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -46,6 +48,7 @@ public class UserAuthenticationService {
     }
 
     public Usuario entity(String email) {
-        return users.findByEmail(email).orElseThrow();
+        return users.findByEmail(email)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
     }
 }

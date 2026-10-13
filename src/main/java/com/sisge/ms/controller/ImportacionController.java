@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,7 +15,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class ImportacionController {
     private final ImportacionService service;
     public ImportacionController(ImportacionService service) { this.service = service; }
-    @PostMapping("/organizaciones/{organizacionId}/importaciones/upload")
+    @PostMapping(value = "/organizaciones/{organizacionId}/importaciones/upload",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ImportacionDtos.Detail upload(@PathVariable Long organizacionId, @RequestParam("file") MultipartFile file) { return service.upload(organizacionId, file); }
     @GetMapping("/importaciones/{id}") public ImportacionDtos.Detail get(@PathVariable Long id) { return service.get(id); }

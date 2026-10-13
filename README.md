@@ -35,7 +35,7 @@ El proyecto usa Maven Wrapper, por lo que no es necesario instalar Maven globalm
    docker compose up --build
    ```
 
-La API quedará disponible en `http://localhost:8080`. MySQL ejecuta automáticamente `database/01-schema.sql` y `database/02-reference-data.sql` solo al crear el volumen `mysql-data` por primera vez. La aplicación usa automáticamente `MYSQL_PASSWORD` para conectarse a MySQL, por lo que no debe definir `DB_PASSWORD` cuando usa Docker.
+La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL acepte conexiones antes de iniciar la aplicación. MySQL ejecuta automáticamente `database/01-schema.sql` y `database/02-reference-data.sql` solo al crear el volumen `mysql-data` por primera vez. La aplicación usa automáticamente `MYSQL_PASSWORD` para conectarse a MySQL, por lo que no debe definir `DB_PASSWORD` cuando usa Docker.
 
 > No elimine ni reinicialice el volumen de MySQL si contiene datos que desea conservar.
 
@@ -96,7 +96,7 @@ Incluya el token recibido en el encabezado `Authorization` con el esquema `Beare
 
 ## Flujo de importación
 
-1. Un operador sube un `.xlsx` a `POST /api/v1/organizaciones/{organizacionId}/importaciones/upload`.
+1. Un operador sube un `.xlsx` mediante `multipart/form-data`, con la parte `file`, a `POST /api/v1/organizaciones/{organizacionId}/importaciones/upload`.
 2. La importación queda en `EN_PROCESO`; sus filas solo existen en la tabla temporal.
 3. El operador edita los cinco campos adicionales y envía la carga a revisión.
 4. La administración central puede observar, rechazar o aprobar.
