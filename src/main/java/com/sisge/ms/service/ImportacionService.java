@@ -3,6 +3,7 @@ package com.sisge.ms.service;
 import com.sisge.ms.dto.importacion.ImportacionDtos;
 import com.sisge.ms.entity.Importacion;
 import com.sisge.ms.entity.ImportacionReemplazante;
+import com.sisge.ms.entity.Organizacion;
 import com.sisge.ms.entity.ReemplazanteHistorico;
 import com.sisge.ms.exception.ApiException;
 import com.sisge.ms.model.ImportStatus;
@@ -14,7 +15,9 @@ import com.sisge.ms.security.CurrentUser;
 import com.sisge.ms.security.UserAuthenticationService;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -46,16 +49,7 @@ public class ImportacionService {
     public ImportacionDtos.Detail upload(Long organizationId, MultipartFile file) {
         CurrentUser user = CurrentUser.get();
         user.requireForOrganization(organizationId, "REEMPLAZANTES_IMPORTAR");
-        if (file == null || file.isEmpty()) throw ApiException.bad("File is empty");
-        if (file.getOriginalFilename() == null || !file.getOriginalFilename().toLowerCase().endsWith(".xlsx")) {
-            throw ApiException.bad("Only .xlsx files are accepted");
-        }
-        List<ImportacionReemplazante> parsed;
-        try {
-            parsed = parser.parse(file.getInputStream());
-        } catch (IOException exception) {
-            throw ApiException.bad("Cannot read upload");
-        }
+        List<ImportacionReemplazante> parsed = parseUpload(file);
         Importacion importacion = new Importacion();
         importacion.setOrganizacion(organizations.findById(organizationId)
                 .orElseThrow(() -> ApiException.notFound("Organization not found")));
@@ -67,6 +61,37 @@ public class ImportacionService {
         rows.saveAll(parsed);
         recount(importacion, parsed);
         return detail(importacion, parsed);
+    }
+
+    @Transactional
+    public ImportacionDtos.Detail migrateHistorical(Long organizationId, MultipartFile file) {
+        CurrentUser user = CurrentUser.get();
+        user.requireGlobal("IMPORTACIONES_APROBAR");
+        user.requireGlobal("IMPORTACIONES_CERRAR");
+        List<ImportacionReemplazante> parsed = parseUpload(file);
+        return closeHistorical(organizations.findById(organizationId)
+                .orElseThrow(() -> ApiException.notFound("Organization not found")), user, file.getOriginalFilename(), parsed);
+    }
+
+    @Transactional
+    public List<ImportacionDtos.Detail> migrateConsolidatedHistorical(MultipartFile file) {
+        CurrentUser user = CurrentUser.get();
+        user.requireGlobal("IMPORTACIONES_APROBAR");
+        user.requireGlobal("IMPORTACIONES_CERRAR");
+        List<ExcelImportParser.HistoricalRow> parsed = parseHistoricalUpload(file);
+        Map<String, List<ExcelImportParser.HistoricalRow>> byUdeo = parsed.stream()
+                .collect(java.util.stream.Collectors.groupingBy(ExcelImportParser.HistoricalRow::udeo,
+                        LinkedHashMap::new, java.util.stream.Collectors.toList()));
+        return byUdeo.values().stream().map(hospitalRows -> {
+            String hospital = hospitalRows.get(0).hospital();
+            if (hospitalRows.stream().anyMatch(row -> !hospital.equals(row.hospital()))) {
+                throw ApiException.conflict("UDEO is associated with more than one hospital name: "
+                        + hospitalRows.get(0).udeo());
+            }
+            Organizacion organization = findOrCreateOrganization(hospitalRows.get(0).udeo(), hospital);
+            return closeHistorical(organization, user, file.getOriginalFilename(),
+                    hospitalRows.stream().map(ExcelImportParser.HistoricalRow::reemplazante).toList());
+        }).toList();
     }
 
     @Transactional(readOnly = true)
@@ -181,6 +206,64 @@ public class ImportacionService {
 
     private Importacion find(Long id) {
         return imports.findById(id).orElseThrow(() -> ApiException.notFound("Importation not found"));
+    }
+
+    private List<ImportacionReemplazante> parseUpload(MultipartFile file) {
+        validateUploadFile(file);
+        try {
+            return parser.parse(file.getInputStream());
+        } catch (IOException exception) {
+            throw ApiException.bad("Cannot read upload");
+        }
+    }
+
+    private List<ExcelImportParser.HistoricalRow> parseHistoricalUpload(MultipartFile file) {
+        validateUploadFile(file);
+        try {
+            return parser.parseHistorical(file.getInputStream());
+        } catch (IOException exception) {
+            throw ApiException.bad("Cannot read upload");
+        }
+    }
+
+    private void validateUploadFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw ApiException.bad("File is empty");
+        if (file.getOriginalFilename() == null || !file.getOriginalFilename().toLowerCase().endsWith(".xlsx")) {
+            throw ApiException.bad("Only .xlsx files are accepted");
+        }
+    }
+
+    private Organizacion findOrCreateOrganization(String udeo, String hospital) {
+        return organizations.findByUdeo(udeo).map(organization -> {
+            if (!organization.getNombre().equals(hospital)) {
+                throw ApiException.conflict("Hospital name does not match UDEO " + udeo);
+            }
+            return organization;
+        }).orElseGet(() -> {
+            Organizacion organization = new Organizacion();
+            organization.setUdeo(udeo);
+            organization.setNombre(hospital);
+            return organizations.save(organization);
+        });
+    }
+
+    private ImportacionDtos.Detail closeHistorical(Organizacion organization, CurrentUser user, String filename,
+            List<ImportacionReemplazante> importRows) {
+        Importacion importacion = new Importacion();
+        importacion.setOrganizacion(organization);
+        importacion.setCreadoPor(authentication.entity(user.email()));
+        importacion.setArchivoOrigen(filename);
+        importacion.setCantidadFilas(importRows.size());
+        importRows.forEach(row -> row.setImportacion(importacion));
+        imports.save(importacion);
+        rows.saveAll(importRows);
+        recount(importacion, importRows);
+        if (importacion.getCantidadFilasConError() > 0) {
+            throw ApiException.conflict("Historical importation has blocking row errors");
+        }
+        history.saveAll(importRows.stream().map(ReemplazanteHistorico::from).toList());
+        importacion.close(authentication.entity(user.email()));
+        return detail(importacion, importRows);
     }
 
     private void requireAccess(Importacion importacion, CurrentUser user) {

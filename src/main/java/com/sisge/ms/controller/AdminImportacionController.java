@@ -7,7 +7,10 @@ import java.time.Instant;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/admin/importaciones")
@@ -18,4 +21,14 @@ public class AdminImportacionController {
     @PostMapping("/{id}/observar") public ImportacionDtos.Detail observe(@PathVariable Long id, @RequestBody @jakarta.validation.Valid ImportacionDtos.Reason reason) { return service.observe(id, reason.motivo()); }
     @PostMapping("/{id}/rechazar") public ImportacionDtos.Detail reject(@PathVariable Long id, @RequestBody @jakarta.validation.Valid ImportacionDtos.Reason reason) { return service.reject(id, reason.motivo()); }
     @PostMapping({"/{id}/aprobar", "/{id}/cerrar"}) public ImportacionDtos.Detail close(@PathVariable Long id) { return service.approveAndClose(id); }
+    @PostMapping(value = "/organizaciones/{organizacionId}/migrar-historico", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public ImportacionDtos.Detail migrateHistorical(@PathVariable Long organizacionId, @RequestParam("file") MultipartFile file) {
+        return service.migrateHistorical(organizacionId, file);
+    }
+    @PostMapping(value = "/migrar-historico-consolidado", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public java.util.List<ImportacionDtos.Detail> migrateConsolidatedHistorical(@RequestParam("file") MultipartFile file) {
+        return service.migrateConsolidatedHistorical(file);
+    }
 }

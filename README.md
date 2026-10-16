@@ -102,6 +102,10 @@ Incluya el token recibido en el encabezado `Authorization` con el esquema `Beare
 4. La administración central puede observar, rechazar o aprobar.
 5. Aprobar cierra la importación atómicamente y copia las filas a `reemplazantes_historico`.
 
+Para migrar un Excel histórico que ya fue revisado, un administrador central con los permisos `IMPORTACIONES_APROBAR` e `IMPORTACIONES_CERRAR` puede enviar el archivo mediante `multipart/form-data` a `POST /api/v1/admin/importaciones/organizaciones/{organizacionId}/migrar-historico`. La importación se registra directamente como `CERRADA` y sus filas se copian al histórico en la misma transacción. El archivo debe cumplir el mismo formato y no contener filas con errores.
+
+Para un Excel histórico consolidado con varios hospitales, use `POST /api/v1/admin/importaciones/migrar-historico-consolidado` con una parte `file` de tipo `multipart/form-data`. El archivo debe incluir las columnas `Hospital` y `UDEO` antes de las columnas habituales. `UDEO` identifica de forma única la organización: las organizaciones inexistentes se crean automáticamente con el nombre de `Hospital`, y se genera una importación cerrada por cada UDEO.
+
 Estados permitidos:
 
 ```text
