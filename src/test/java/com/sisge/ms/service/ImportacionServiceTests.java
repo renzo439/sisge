@@ -29,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,6 +50,8 @@ class ImportacionServiceTests {
     private MultipartFile file;
     @Mock
     private Usuario administrator;
+    @Mock
+    private JdbcTemplate jdbc;
 
     @AfterEach
     void clearSecurityContext() {
@@ -74,7 +77,7 @@ class ImportacionServiceTests {
         when(organizations.findById(7L)).thenReturn(Optional.of(organization));
         when(authentication.entity("admin@example.com")).thenReturn(administrator);
 
-        ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser);
+        ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser, jdbc);
 
         ImportacionDtos.Detail result = service.migrateHistorical(7L, file);
 
@@ -107,13 +110,13 @@ class ImportacionServiceTests {
         when(organizations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(authentication.entity("admin@example.com")).thenReturn(administrator);
 
-        ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser);
+        ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser, jdbc);
 
-        List<ImportacionDtos.Detail> results = service.migrateConsolidatedHistorical(file);
+        List<ImportacionDtos.Summary> results = service.migrateConsolidatedHistorical(file);
 
         assertEquals(1, results.size());
         assertEquals(ImportStatus.CERRADA, results.get(0).estado());
         verify(organizations).save(any());
-        verify(history).saveAll(any());
+        verify(jdbc, org.mockito.Mockito.times(2)).batchUpdate(any(String.class), any(List.class), eq(500), any());
     }
 }

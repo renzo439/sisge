@@ -28,7 +28,7 @@ public class AdminImportacionController {
     }
     @PostMapping(value = "/migrar-historico-consolidado", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    public java.util.List<ImportacionDtos.Detail> migrateConsolidatedHistorical(@RequestParam("file") MultipartFile file) {
+    public java.util.List<ImportacionDtos.Summary> migrateConsolidatedHistorical(@RequestParam("file") MultipartFile file) {
         return service.migrateConsolidatedHistorical(file);
     }
 }

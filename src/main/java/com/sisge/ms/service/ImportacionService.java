@@ -5,6 +5,7 @@ import com.sisge.ms.entity.Importacion;
 import com.sisge.ms.entity.ImportacionReemplazante;
 import com.sisge.ms.entity.Organizacion;
 import com.sisge.ms.entity.ReemplazanteHistorico;
+import com.sisge.ms.entity.Usuario;
 import com.sisge.ms.exception.ApiException;
 import com.sisge.ms.model.ImportStatus;
 import com.sisge.ms.repository.ImportacionReemplazanteRepository;
@@ -14,6 +15,8 @@ import com.sisge.ms.repository.ReemplazanteHistoricoRepository;
 import com.sisge.ms.security.CurrentUser;
 import com.sisge.ms.security.UserAuthenticationService;
 import java.io.IOException;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,16 +37,18 @@ public class ImportacionService {
     private final OrganizationRepository organizations;
     private final UserAuthenticationService authentication;
     private final ExcelImportParser parser;
+    private final JdbcTemplate jdbc;
 
     public ImportacionService(ImportacionRepository imports, ImportacionReemplazanteRepository rows,
             ReemplazanteHistoricoRepository history, OrganizationRepository organizations,
-            UserAuthenticationService authentication, ExcelImportParser parser) {
+            UserAuthenticationService authentication, ExcelImportParser parser, JdbcTemplate jdbc) {
         this.imports = imports;
         this.rows = rows;
         this.history = history;
         this.organizations = organizations;
         this.authentication = authentication;
         this.parser = parser;
+        this.jdbc = jdbc;
     }
 
     @Transactional
@@ -74,7 +80,7 @@ public class ImportacionService {
     }
 
     @Transactional
-    public List<ImportacionDtos.Detail> migrateConsolidatedHistorical(MultipartFile file) {
+    public List<ImportacionDtos.Summary> migrateConsolidatedHistorical(MultipartFile file) {
         CurrentUser user = CurrentUser.get();
         user.requireGlobal("IMPORTACIONES_APROBAR");
         user.requireGlobal("IMPORTACIONES_CERRAR");
@@ -82,6 +88,7 @@ public class ImportacionService {
         Map<String, List<ExcelImportParser.HistoricalRow>> byUdeo = parsed.stream()
                 .collect(java.util.stream.Collectors.groupingBy(ExcelImportParser.HistoricalRow::udeo,
                         LinkedHashMap::new, java.util.stream.Collectors.toList()));
+        Usuario creator = authentication.entity(user.email());
         return byUdeo.values().stream().map(hospitalRows -> {
             String hospital = hospitalRows.get(0).hospital();
             if (hospitalRows.stream().anyMatch(row -> !hospital.equals(row.hospital()))) {
@@ -89,7 +96,7 @@ public class ImportacionService {
                         + hospitalRows.get(0).udeo());
             }
             Organizacion organization = findOrCreateOrganization(hospitalRows.get(0).udeo(), hospital);
-            return closeHistorical(organization, user, file.getOriginalFilename(),
+            return closeHistoricalBatch(organization, creator, file.getOriginalFilename(),
                     hospitalRows.stream().map(ExcelImportParser.HistoricalRow::reemplazante).toList());
         }).toList();
     }
@@ -264,6 +271,78 @@ public class ImportacionService {
         history.saveAll(importRows.stream().map(ReemplazanteHistorico::from).toList());
         importacion.close(authentication.entity(user.email()));
         return detail(importacion, importRows);
+    }
+
+    private ImportacionDtos.Summary closeHistoricalBatch(Organizacion organization, Usuario creator, String filename,
+            List<ImportacionReemplazante> importRows) {
+        if (importRows.stream().anyMatch(row -> row.getErrores() != null && !row.getErrores().isBlank())) {
+            throw ApiException.conflict("Historical importation has blocking row errors");
+        }
+        Importacion importacion = new Importacion();
+        importacion.setOrganizacion(organization);
+        importacion.setCreadoPor(creator);
+        importacion.setArchivoOrigen(filename);
+        importacion.setCantidadFilas(importRows.size());
+        importacion.recount(importRows.size(), 0);
+        imports.saveAndFlush(importacion);
+        batchInsertImportRows(importacion, importRows);
+        batchInsertHistoricalRows(importacion, importRows);
+        importacion.close(creator);
+        return summary(importacion);
+    }
+
+    private void batchInsertImportRows(Importacion importacion, List<ImportacionReemplazante> importRows) {
+        jdbc.batchUpdate("""
+                INSERT INTO importacion_reemplazantes (importacion_id, fila_origen, reemplazante, cuil,
+                categoria_reemplazante, instrumento_legal, periodo_desde, periodo_hasta, a_pagar, a_deuda,
+                titular, categoria_titular, licencia_desde, licencia_hasta, cantidad_dias, tipo_licencia_excel,
+                agrupamiento, funcion_titular, tipo_licencia, observaciones, lugar_trabajo, errores)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, importRows, 500, (statement, row) -> {
+                    statement.setLong(1, importacion.getId());
+                    statement.setInt(2, row.getFilaOrigen());
+                    setReplacementValues(statement, 3, row);
+                });
+    }
+
+    private void batchInsertHistoricalRows(Importacion importacion, List<ImportacionReemplazante> importRows) {
+        jdbc.batchUpdate("""
+                INSERT INTO reemplazantes_historico (organizacion_id, importacion_id, archivo_origen, fila_origen,
+                reemplazante, cuil, categoria_reemplazante, instrumento_legal, periodo_desde, periodo_hasta,
+                a_pagar, a_deuda, titular, categoria_titular, licencia_desde, licencia_hasta, cantidad_dias,
+                tipo_licencia_excel, agrupamiento, funcion_titular, tipo_licencia, observaciones, lugar_trabajo, fecha_cierre)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, importRows, 500, (statement, row) -> {
+                    statement.setLong(1, importacion.getOrganizacion().getId());
+                    statement.setLong(2, importacion.getId());
+                    statement.setString(3, importacion.getArchivoOrigen());
+                    statement.setInt(4, row.getFilaOrigen());
+                    setReplacementValues(statement, 5, row);
+                });
+    }
+
+    private void setReplacementValues(PreparedStatement statement, int parameter, ImportacionReemplazante row)
+            throws SQLException {
+        statement.setString(parameter++, row.getReemplazante());
+        statement.setString(parameter++, row.getCuil());
+        statement.setString(parameter++, row.getCategoriaReemplazante());
+        statement.setString(parameter++, row.getInstrumentoLegal());
+        statement.setObject(parameter++, row.getPeriodoDesde());
+        statement.setObject(parameter++, row.getPeriodoHasta());
+        statement.setBigDecimal(parameter++, row.getAPagar());
+        statement.setBigDecimal(parameter++, row.getADeuda());
+        statement.setString(parameter++, row.getTitular());
+        statement.setString(parameter++, row.getCategoriaTitular());
+        statement.setObject(parameter++, row.getLicenciaDesde());
+        statement.setObject(parameter++, row.getLicenciaHasta());
+        statement.setObject(parameter++, row.getCantidadDias());
+        statement.setString(parameter++, row.getTipoLicenciaExcel());
+        statement.setString(parameter++, row.getAgrupamiento());
+        statement.setString(parameter++, row.getFuncionTitular());
+        statement.setString(parameter++, row.getTipoLicencia());
+        statement.setString(parameter++, row.getObservaciones());
+        statement.setString(parameter++, row.getLugarTrabajo());
+        statement.setString(parameter, row.getErrores());
     }
 
     private void requireAccess(Importacion importacion, CurrentUser user) {
