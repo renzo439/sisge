@@ -11,7 +11,7 @@ import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 @RestControllerAdvice public class ApiExceptionHandler {
  private static final Logger log=LoggerFactory.getLogger(ApiExceptionHandler.class);
- @ExceptionHandler(ApiException.class) ResponseEntity<?> api(ApiException e){return response(e.status(),e.getMessage(),List.of());}
+ @ExceptionHandler(ApiException.class) ResponseEntity<?> api(ApiException e){return response(e.status(),e.getMessage(),e.details());}
  @ExceptionHandler(MissingServletRequestPartException.class) ResponseEntity<?> missingPart(MissingServletRequestPartException e){
   return response(HttpStatus.BAD_REQUEST,"Multipart field '"+e.getRequestPartName()+"' is required",List.of());
  }

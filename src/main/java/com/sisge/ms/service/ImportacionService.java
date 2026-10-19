@@ -266,7 +266,7 @@ public class ImportacionService {
         rows.saveAll(importRows);
         recount(importacion, importRows);
         if (importacion.getCantidadFilasConError() > 0) {
-            throw ApiException.conflict("Historical importation has blocking row errors");
+            throw ApiException.conflict("Historical importation has blocking row errors", blockingRowErrors(importRows));
         }
         history.saveAll(importRows.stream().map(ReemplazanteHistorico::from).toList());
         importacion.close(authentication.entity(user.email()));
@@ -276,7 +276,7 @@ public class ImportacionService {
     private ImportacionDtos.Summary closeHistoricalBatch(Organizacion organization, Usuario creator, String filename,
             List<ImportacionReemplazante> importRows) {
         if (importRows.stream().anyMatch(row -> row.getErrores() != null && !row.getErrores().isBlank())) {
-            throw ApiException.conflict("Historical importation has blocking row errors");
+            throw ApiException.conflict("Historical importation has blocking row errors", blockingRowErrors(importRows));
         }
         Importacion importacion = new Importacion();
         importacion.setOrganizacion(organization);
@@ -289,6 +289,15 @@ public class ImportacionService {
         batchInsertHistoricalRows(importacion, importRows);
         importacion.close(creator);
         return summary(importacion);
+    }
+
+    private List<Map<String, Object>> blockingRowErrors(List<ImportacionReemplazante> importRows) {
+        return importRows.stream()
+                .filter(row -> row.getErrores() != null && !row.getErrores().isBlank())
+                .map(row -> Map.<String, Object>of(
+                        "fila", row.getFilaOrigen(),
+                        "errores", List.of(row.getErrores().split(";"))))
+                .toList();
     }
 
     private void batchInsertImportRows(Importacion importacion, List<ImportacionReemplazante> importRows) {

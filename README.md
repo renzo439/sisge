@@ -41,14 +41,22 @@ La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL
 
 ## Ejecución local
 
-1. Cree una base MySQL vacía y ejecute los scripts en este orden:
+1. Cree el archivo de variables de entorno si todavía no existe y reemplace sus valores de ejemplo:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   La aplicación carga `.env` automáticamente al ejecutarse desde la raíz del proyecto. Las variables definidas en PowerShell tienen prioridad sobre este archivo.
+
+2. Cree una base MySQL vacía y ejecute los scripts en este orden:
 
    ```powershell
    mysql -u root -p < database\01-schema.sql
    mysql -u root -p sisge < database\02-reference-data.sql
    ```
 
-2. Defina las variables de entorno para la sesión actual de PowerShell:
+3. Para reemplazar algún valor de `.env` solo durante la sesión actual de PowerShell, defina las variables de entorno:
 
    ```powershell
    $env:DB_URL = "jdbc:mysql://localhost:3306/sisge?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
@@ -59,11 +67,13 @@ La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL
    $env:BOOTSTRAP_ADMIN_PASSWORD = "una-clave-de-administrador-segura"
    ```
 
-3. Inicie la aplicación:
+4. Inicie la aplicación:
 
    ```powershell
    .\mvnw.cmd spring-boot:run
    ```
+
+   De forma predeterminada queda disponible en `http://localhost:8081`. Para usar otro puerto, asigne `SERVER_PORT` en `.env` con el formato `SERVER_PORT=8082`.
 
 En el primer arranque, el administrador general se crea únicamente si `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD` tienen valores y el correo todavía no existe. Su contraseña se almacena con BCrypt. Quite `BOOTSTRAP_ADMIN_PASSWORD` de su entorno después de provisionarlo.
 
@@ -104,7 +114,7 @@ Incluya el token recibido en el encabezado `Authorization` con el esquema `Beare
 
 Para migrar un Excel histórico que ya fue revisado, un administrador central con los permisos `IMPORTACIONES_APROBAR` e `IMPORTACIONES_CERRAR` puede enviar el archivo mediante `multipart/form-data` a `POST /api/v1/admin/importaciones/organizaciones/{organizacionId}/migrar-historico`. La importación se registra directamente como `CERRADA` y sus filas se copian al histórico en la misma transacción. El archivo debe cumplir el mismo formato y no contener filas con errores.
 
-Para un Excel histórico consolidado con varios hospitales, use `POST /api/v1/admin/importaciones/migrar-historico-consolidado` con una parte `file` de tipo `multipart/form-data`. El archivo debe incluir las columnas `Hospital` y `UDEO` antes de las columnas habituales. `UDEO` identifica de forma única la organización: las organizaciones inexistentes se crean automáticamente con el nombre de `Hospital`, y se genera una importación cerrada por cada UDEO. Para archivos grandes, las filas se insertan en lotes de 500 y la respuesta contiene solo el resumen de cada importación creada.
+Para un Excel histórico consolidado con varios hospitales, use `POST /api/v1/admin/importaciones/migrar-historico-consolidado` con una parte `file` de tipo `multipart/form-data`. El archivo debe incluir las columnas `Hospital` y `UDEO` antes de las columnas habituales. `UDEO` identifica de forma única la organización: las organizaciones inexistentes se crean automáticamente con el nombre de `Hospital`, y se genera una importación cerrada por cada UDEO. Para archivos grandes, las filas se insertan en lotes de 500 y la respuesta contiene solo el resumen de cada importación creada. Si alguna fila tiene errores bloqueantes, la respuesta `409` incluye en `details` la fila de Excel (`fila`) y las reglas incumplidas (`errores`).
 
 Estados permitidos:
 

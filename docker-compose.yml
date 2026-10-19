@@ -22,7 +22,8 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/sisge?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&rewriteBatchedStatements=true
       DB_USERNAME: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
-    ports: ["8080:8080"]
+      SERVER_PORT: ${SERVER_PORT:-8081}
+    ports: ["8080:${SERVER_PORT:-8081}"]
     depends_on:
       mysql:
         condition: service_healthy
