@@ -35,7 +35,7 @@ El proyecto usa Maven Wrapper, por lo que no es necesario instalar Maven globalm
    docker compose up --build
    ```
 
-La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL acepte conexiones antes de iniciar la aplicación. MySQL ejecuta automáticamente `database/01-schema.sql` y `database/02-reference-data.sql` solo al crear el volumen `mysql-data` por primera vez. La aplicación usa automáticamente `MYSQL_PASSWORD` para conectarse a MySQL, por lo que no debe definir `DB_PASSWORD` cuando usa Docker.
+La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL acepte conexiones antes de iniciar la aplicación. MySQL ejecuta automáticamente los scripts versionados de `database/` (incluido `04-personal-registry.sql`) solo al crear el volumen `mysql-data` por primera vez. La aplicación usa automáticamente `MYSQL_PASSWORD` para conectarse a MySQL, por lo que no debe definir `DB_PASSWORD` cuando usa Docker. Para una instalación limpia, cree un volumen Docker nuevo o ejecute todos los scripts en orden en una base vacía; no elimine un volumen que contenga datos.
 
 > No elimine ni reinicialice el volumen de MySQL si contiene datos que desea conservar.
 
@@ -54,6 +54,8 @@ La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL
    ```powershell
    mysql -u root -p < database\01-schema.sql
    mysql -u root -p sisge < database\02-reference-data.sql
+   mysql -u root -p sisge < database\03-add-organizacion-udeo.sql
+   mysql -u root -p sisge < database\04-personal-registry.sql
    ```
 
 3. Para reemplazar algún valor de `.env` solo durante la sesión actual de PowerShell, defina las variables de entorno:
@@ -123,6 +125,12 @@ EN_PROCESO -> PENDIENTE_REVISION -> CERRADA
 PENDIENTE_REVISION -> OBSERVADA -> PENDIENTE_REVISION
 PENDIENTE_REVISION -> RECHAZADA
 ```
+
+## Padrón de personal
+
+`POST /api/v1/organizaciones/{organizacionId}/personal/importaciones` recibe un Excel `.xlsx` y conserva cada fila, su número y todos los valores de origen en staging. Las cabeceras requeridas son `DNI`, `Nombres`, `Apellido` y `Fecha Inicio`; también se conservan `CUIL`, `Sexo`, `Fecha Nacimiento`, `Organizacion`, `Sector`, `Escalafon`, `Categoria`, `Situacion Revista`, `Agrupamiento`, `Funcion`, `Titulo`, `Adicional`, `Antiguedad` y `Afectado`.
+
+Revise y normalice cada fila con `PUT /api/v1/personal/importaciones/{importId}/filas/{rowId}`. Solo filas revisadas explícitamente pueden aprobarse mediante `POST /api/v1/personal/importaciones/{id}/aprobar`; esto crea o actualiza la persona por CUIL (o DNI sin CUIL) y crea su designación. Consulte el padrón oficial con `GET /api/v1/personas?organizacionId={id}&q={texto}`. Los permisos son `PERSONAL_IMPORTAR`, `PERSONAL_REVISAR`, `PERSONAL_APROBAR` y `PERSONAL_VER`.
 
 ## Estructura del código
 

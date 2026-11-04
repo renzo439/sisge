@@ -1,0 +1,12 @@
+package com.sisge.ms.repository;
+
+import com.sisge.ms.entity.ImportacionPersonal;
+import jakarta.persistence.LockModeType;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.*;
+
+public interface ImportacionPersonalRepository extends JpaRepository<ImportacionPersonal, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from ImportacionPersonal i where i.id = :id")
+    Optional<ImportacionPersonal> lockById(Long id);
+}
