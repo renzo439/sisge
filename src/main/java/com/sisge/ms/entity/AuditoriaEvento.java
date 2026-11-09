@@ -1,0 +1,4 @@
+package com.sisge.ms.entity;
+import jakarta.persistence.*; import java.time.Instant;
+@Entity @Table(name="auditoria_eventos") public class AuditoriaEvento { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @ManyToOne @JoinColumn(name="usuario_id") private Usuario usuario; @ManyToOne @JoinColumn(name="organizacion_id") private Organizacion organizacion; @Column(nullable=false) private String accion; @Column(nullable=false) private String entidad; @Column(name="entidad_id") private Long entidadId; @Column(nullable=false) private Instant fecha=Instant.now();
+ public Long getId(){return id;} public void setUsuario(Usuario v){usuario=v;} public void setOrganizacion(Organizacion v){organizacion=v;} public void setAccion(String v){accion=v;} public void setEntidad(String v){entidad=v;} public void setEntidadId(Long v){entidadId=v;} }

@@ -38,6 +38,13 @@ El proyecto usa Maven Wrapper, por lo que no es necesario instalar Maven globalm
 La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL acepte conexiones antes de iniciar la aplicación. MySQL ejecuta automáticamente los scripts versionados de `database/` (incluido `04-personal-registry.sql`) solo al crear el volumen `mysql-data` por primera vez. La aplicación usa automáticamente `MYSQL_PASSWORD` para conectarse a MySQL, por lo que no debe definir `DB_PASSWORD` cuando usa Docker. Para una instalación limpia, cree un volumen Docker nuevo o ejecute todos los scripts en orden en una base vacía; no elimine un volumen que contenga datos.
 
 > No elimine ni reinicialice el volumen de MySQL si contiene datos que desea conservar.
+>
+> Para actualizar un volumen existente, ejecute cada script nuevo manualmente. Por ejemplo, para aplicar la normalización del módulo de personal:
+>
+> ```powershell
+> Get-Content -Raw database\05-personal-normalization.sql |
+>   docker compose exec -T mysql sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" sisge'
+> ```
 
 ## Ejecución local
 
@@ -56,6 +63,7 @@ La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL
    mysql -u root -p sisge < database\02-reference-data.sql
    mysql -u root -p sisge < database\03-add-organizacion-udeo.sql
    mysql -u root -p sisge < database\04-personal-registry.sql
+   mysql -u root -p sisge < database\05-personal-normalization.sql
    ```
 
 3. Para reemplazar algún valor de `.env` solo durante la sesión actual de PowerShell, defina las variables de entorno:
@@ -128,9 +136,75 @@ PENDIENTE_REVISION -> RECHAZADA
 
 ## Padrón de personal
 
-`POST /api/v1/organizaciones/{organizacionId}/personal/importaciones` recibe un Excel `.xlsx` y conserva cada fila, su número y todos los valores de origen en staging. Las cabeceras requeridas son `DNI`, `Nombres`, `Apellido` y `Fecha Inicio`; también se conservan `CUIL`, `Sexo`, `Fecha Nacimiento`, `Organizacion`, `Sector`, `Escalafon`, `Categoria`, `Situacion Revista`, `Agrupamiento`, `Funcion`, `Titulo`, `Adicional`, `Antiguedad` y `Afectado`.
+El padrón utiliza una carga temporal, seguida de relevamiento, validación central y consolidación. Subir un archivo nunca modifica directamente `personas`, `designaciones` ni `designacion_adicionales`.
 
-Revise y normalice cada fila con `PUT /api/v1/personal/importaciones/{importId}/filas/{rowId}`. Solo filas revisadas explícitamente pueden aprobarse mediante `POST /api/v1/personal/importaciones/{id}/aprobar`; esto crea o actualiza la persona por CUIL (o DNI sin CUIL) y crea su designación. Consulte el padrón oficial con `GET /api/v1/personas?organizacionId={id}&q={texto}`. Los permisos son `PERSONAL_IMPORTAR`, `PERSONAL_REVISAR`, `PERSONAL_APROBAR` y `PERSONAL_VER`.
+### Preparación y carga del Excel
+
+El archivo debe ser `.xlsx`, no estar vacío y contener datos en la primera hoja. Las cabeceras no distinguen mayúsculas, minúsculas ni acentos. Son obligatorias `DNI`, `Nombres`, `Apellido` y `Fecha Inicio`; las fechas admiten `yyyy-MM-dd` o `d/M/yyyy`. SisGe conserva todas las columnas y valores originales en `valores_crudos`, incluso las columnas que no reconoce.
+
+El operador autorizado para la organización carga el archivo:
+
+```text
+POST /api/v1/organizaciones/{organizacionId}/personal/importaciones
+Content-Type: multipart/form-data
+file=<archivo.xlsx>
+```
+
+La respuesta contiene el `importacionId`, la cantidad de filas procesadas, válidas y con errores. Consulte el estado y cada fila con:
+
+```text
+GET /api/v1/personal/importaciones/{importacionId}
+```
+
+### Relevamiento por organización
+
+El responsable revisa las filas con error y las que requieren confirmación funcional. Para cada corrección debe enviar:
+
+```text
+PUT /api/v1/personal/importaciones/{importacionId}/filas/{filaId}
+```
+
+La revisión debe completar los datos personales, la organización y los IDs de las relaciones aplicables: `dependenciaId`, `sectorId`, `escalafonId`, `categoriaId`, `situacionRevistaId`, `agrupamientoId`, `funcionId`, `tipoAfectacionId` y `tituloId`. Los valores de maestros inexistentes no se crean automáticamente: deben darse de alta y luego seleccionarse con su ID correspondiente.
+
+Una persona de una organización solo puede relevar la importación de esa organización; no puede cambiar la fila a otra organización. Cada modificación queda auditada junto con los valores anteriores y nuevos.
+
+### Confirmación, aprobación y consolidación
+
+Antes de confirmar el Excel, el responsable debe verificar que:
+
+1. Todas las filas estén marcadas como revisadas.
+2. No existan errores de formato, DNI, fechas o campos obligatorios.
+3. Las relaciones laborales estén asociadas a maestros válidos mediante IDs, especialmente escalafón, categoría, situación de revista, agrupamiento y función.
+4. Los adicionales `ADICIONAL M H` y `ADICIONAL POR JEFATURA` sean numéricos cuando tengan valor.
+5. Las diferencias de DNI y CUIL, posibles duplicados y asignaciones de organización estén resueltas.
+
+La administración central ejecuta primero la validación previa, que no modifica las tablas definitivas:
+
+```text
+POST /api/v1/admin/personal/importaciones/{importacionId}/validar
+```
+
+El resultado informa personas y designaciones nuevas o existentes, maestros faltantes, filas inválidas, adicionales inválidos y posibles duplicados. Si hay errores bloqueantes, se vuelve al relevamiento.
+
+Cuando la validación es satisfactoria, la administración central aprueba la importación:
+
+```text
+POST /api/v1/personal/importaciones/{importacionId}/aprobar
+```
+
+La aprobación confirma la carga, pero todavía no inserta datos definitivos. Finalmente, y solo para una importación aprobada sin errores bloqueantes, la administración inicia la consolidación:
+
+```text
+POST /api/v1/admin/personal/importaciones/{importacionId}/consolidar
+```
+
+La consolidación crea o actualiza personas por DNI/CUIL, designaciones y adicionales sin duplicar registros vigentes; además, registra la trazabilidad y la auditoría. El padrón consolidado se consulta con:
+
+```text
+GET /api/v1/personas?organizacionId={id}&q={texto}
+```
+
+Los permisos requeridos son `PERSONAL_IMPORTAR`, `PERSONAL_REVISAR`, `PERSONAL_APROBAR` y `PERSONAL_VER`. La validación, aprobación y consolidación requieren el permiso global `PERSONAL_APROBAR`.
 
 ## Estructura del código
 

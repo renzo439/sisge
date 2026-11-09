@@ -1,0 +1,1 @@
+package com.sisge.ms.repository; import com.sisge.ms.entity.AuditoriaEvento; import org.springframework.data.jpa.repository.JpaRepository; public interface AuditoriaEventoRepository extends JpaRepository<AuditoriaEvento,Long>{}

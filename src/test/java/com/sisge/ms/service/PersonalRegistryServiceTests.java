@@ -30,7 +30,7 @@ class PersonalRegistryServiceTests {
     @Mock PersonalExcelImportParser parser;
     @AfterEach void clearContext() { SecurityContextHolder.clearContext(); }
     @Test
-    void approvalOnlyCreatesOfficialRecordsFromExplicitlyReviewedRows() {
+    void approvalLeavesOfficialRecordsForControlledConsolidation() {
         var user = new CurrentUser(1L, "admin@example.com", Set.of("PERSONAL_APROBAR"), Map.of(), true);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, List.of()));
         var organization = new Organizacion(); organization.setNombre("Hospital");
@@ -39,11 +39,9 @@ class PersonalRegistryServiceTests {
         row.review("12345678", "20123456786", "Ana", "Pérez", "F", LocalDate.of(1990, 1, 1), organization, null, "Profesional", "A", "Planta", "Salud", "Médica", LocalDate.of(2026, 1, 1), 5, true);
         when(imports.lockById(9L)).thenReturn(Optional.of(imported));
         when(rows.findByImportacionId(9L)).thenReturn(List.of(row));
-        when(people.findByCuil("20123456786")).thenReturn(Optional.empty());
         var service = new PersonalRegistryService(imports, rows, people, assignments, organizations, sectors, authentication, parser);
         PersonalDtos.ImportDetail result = service.approve(9L);
-        assertEquals(PersonalImportStatus.APROBADA.name(), result.estado());
-        verify(people).save(any(Persona.class));
-        verify(assignments).save(any(Designacion.class));
+        assertEquals(PersonalImportStatus.APROBADO.name(), result.estado());
+        verifyNoInteractions(people, assignments);
     }
 }

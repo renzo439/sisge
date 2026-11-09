@@ -1,0 +1,5 @@
+package com.sisge.ms.entity;
+import jakarta.persistence.*; import java.math.BigDecimal; import java.time.*;
+@Entity @Table(name="designacion_adicionales", uniqueConstraints=@UniqueConstraint(columnNames={"designacion_id","adicional_id","vigente"}))
+public class DesignacionAdicional { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @ManyToOne(optional=false) @JoinColumn(name="designacion_id") private Designacion designacion; @ManyToOne(optional=false) @JoinColumn(name="adicional_id") private Adicional adicional; private BigDecimal valor; private BigDecimal porcentaje; @Column(name="fecha_desde") private LocalDate fechaDesde; @Column(name="fecha_hasta") private LocalDate fechaHasta; @Column(nullable=false) private boolean vigente=true; @Column(columnDefinition="TEXT") private String observaciones;
+ public Long getId(){return id;} public Adicional getAdicional(){return adicional;} public boolean isVigente(){return vigente;} public void setDesignacion(Designacion v){designacion=v;} public void setAdicional(Adicional v){adicional=v;} public void setValor(BigDecimal v){valor=v;} public void setObservaciones(String v){observaciones=v;} }
