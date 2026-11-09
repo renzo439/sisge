@@ -15,6 +15,7 @@ public class PersonalRegistryController {
     public PersonalRegistryController(PersonalRegistryService service) { this.service=service; }
     @PostMapping(value="/organizaciones/{organizacionId}/personal/importaciones", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED) public PersonalDtos.ImportDetail upload(@PathVariable Long organizacionId, @RequestParam("file") MultipartFile file) { return service.upload(organizacionId, file); }
+    @GetMapping("/personal/importaciones") public Page<PersonalDtos.ImportSummary> listImports(@RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size) { return service.listImports(PageRequest.of(Math.max(0,page), Math.min(Math.max(1,size),100), Sort.by("id").descending())); }
     @GetMapping("/personal/importaciones/{id}") public PersonalDtos.ImportDetail get(@PathVariable Long id) { return service.get(id); }
     @PutMapping("/personal/importaciones/{importId}/filas/{rowId}") public PersonalDtos.ImportDetail review(@PathVariable Long importId, @PathVariable Long rowId, @Valid @RequestBody PersonalDtos.RowReview body) { return service.review(importId, rowId, body); }
     @PostMapping("/personal/importaciones/{id}/aprobar") public PersonalDtos.ImportDetail approve(@PathVariable Long id) { return service.approve(id); }

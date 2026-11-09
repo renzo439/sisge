@@ -58,6 +58,24 @@ public class PersonalRegistryService {
         ImportacionPersonal imported=find(id); access(imported, "PERSONAL_REVISAR");
         return detail(imported, rows.findByImportacionId(id));
     }
+    @Transactional(readOnly = true)
+    public Page<PersonalDtos.ImportSummary> listImports(Pageable pageable) {
+        CurrentUser user = CurrentUser.get();
+        Page<ImportacionPersonal> result;
+        if (user.global()) {
+            user.requireGlobal("PERSONAL_REVISAR");
+            result = imports.findAll(pageable);
+        } else {
+            List<Long> organizationIds = user.organizationPermissions().entrySet().stream()
+                    .filter(entry -> entry.getValue().contains("PERSONAL_REVISAR"))
+                    .map(java.util.Map.Entry::getKey)
+                    .toList();
+            result = organizationIds.isEmpty()
+                    ? Page.empty(pageable)
+                    : imports.findByOrganizacionIdIn(organizationIds, pageable);
+        }
+        return result.map(this::summary);
+    }
     @Transactional
     public PersonalDtos.ImportDetail review(Long importId, Long rowId, PersonalDtos.RowReview review) {
         ImportacionPersonal imported=find(importId); access(imported, "PERSONAL_REVISAR");
@@ -134,6 +152,12 @@ public class PersonalRegistryService {
     private <T extends Maestro> T optional(Class<T> type,Long id,T current){if(id==null)return current;T value=required(type,id,type.getSimpleName()+" not found");if(!value.isActivo())throw ApiException.bad(type.getSimpleName()+" is inactive");return value;}
     private String rowJson(ImportacionPersonalFila row){return "{\"dni\":\""+json(row.getDni())+"\",\"cuil\":\""+json(row.getCuil())+"\",\"organizacionId\":"+id(row.getOrganizacion())+",\"dependenciaId\":"+id(row.getDependencia())+",\"sectorId\":"+id(row.getSector())+",\"escalafonId\":"+id(row.getEscalafon())+",\"categoriaId\":"+id(row.getCategoria())+",\"situacionRevistaId\":"+id(row.getSituacionRevista())+",\"agrupamientoId\":"+id(row.getAgrupamiento())+",\"funcionId\":"+id(row.getFuncion())+",\"tipoAfectacionId\":"+id(row.getTipoAfectacion())+",\"tituloId\":"+id(row.getTitulo())+"}";}
     private String json(String value){return value==null?"":value.replace("\\","\\\\").replace("\"","\\\"");} private Object id(Object value){if(value==null)return "null";try{return value.getClass().getMethod("getId").invoke(value);}catch(Exception ignored){return "null";}}
+    private PersonalDtos.ImportSummary summary(ImportacionPersonal imported) {
+        return new PersonalDtos.ImportSummary(imported.getId(), imported.getOrganizacion().getId(),
+                imported.getOrganizacion().getNombre(), imported.getArchivoOrigen(), imported.getEstado().name(),
+                imported.getFechaCreacion(), imported.getCantidadFilas(), imported.getCantidadFilasValidas(),
+                imported.getCantidadFilasConError());
+    }
     private PersonalDtos.ImportDetail detail(ImportacionPersonal imported, List<ImportacionPersonalFila> staged) { int errors=(int)staged.stream().filter(r->r.getErrores()!=null&&!r.getErrores().isBlank()).count(); return new PersonalDtos.ImportDetail(imported.getId(), imported.getOrganizacion().getId(), imported.getArchivoOrigen(), imported.getEstado().name(), staged.size(), staged.size()-errors, errors, staged.stream().map(row -> new PersonalDtos.Row(row.getId(), row.getFilaOrigen(), row.getValoresCrudos(), row.getDni(), row.getCuil(), row.getNombres(), row.getApellido(), row.getSexo(), row.getFechaNacimiento(), row.getOrganizacion()==null?null:row.getOrganizacion().getId(), row.getDependencia()==null?null:row.getDependencia().getId(), row.getSector()==null?null:row.getSector().getId(), row.getEscalafon()==null?null:row.getEscalafon().getId(), row.getCategoria()==null?null:row.getCategoria().getId(), row.getSituacionRevista()==null?null:row.getSituacionRevista().getId(), row.getAgrupamiento()==null?null:row.getAgrupamiento().getId(), row.getFuncion()==null?null:row.getFuncion().getId(), row.getTipoAfectacion()==null?null:row.getTipoAfectacion().getId(), row.getTitulo()==null?null:row.getTitulo().getId(), row.getAdicionalMh(), row.getAdicionalJefatura(), row.getFechaInicio(), row.getAntiguedadAnios(), row.getAfectado(), row.isRevisada(), row.getErrores())).toList()); }
     private PersonalDtos.Person person(Designacion value) { Persona p=value.getPersona(); return new PersonalDtos.Person(p.getId(), p.getDni(), p.getCuil(), p.getNombres(), p.getApellido(), p.getSexo(), p.getFechaNacimiento(), value.getOrganizacion().getId(), value.getOrganizacion().getNombre(), value.getSector()==null?null:value.getSector().getId(), value.getSector()==null?null:value.getSector().getNombre(), name(value.getEscalafon()), name(value.getCategoria()), name(value.getSituacionRevista()), name(value.getAgrupamiento()), name(value.getFuncion()), value.getFechaInicio(), value.getAntiguedadAnios(), value.isAfectado()); }
     private String name(Maestro master){return master==null?null:master.getNombre();}

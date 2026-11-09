@@ -17,6 +17,8 @@ import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 @ExtendWith(MockitoExtension.class)
 class PersonalRegistryServiceTests {
@@ -43,5 +45,24 @@ class PersonalRegistryServiceTests {
         PersonalDtos.ImportDetail result = service.approve(9L);
         assertEquals(PersonalImportStatus.APROBADO.name(), result.estado());
         verifyNoInteractions(people, assignments);
+    }
+    @Test
+    void listsImportsWithOrganizationNameForGlobalReviewers() {
+        var user = new CurrentUser(1L, "admin@example.com", Set.of("PERSONAL_REVISAR"), Map.of(), true);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, List.of()));
+        var organization = new Organizacion();
+        organization.setNombre("Hospital Norte");
+        var imported = new ImportacionPersonal();
+        imported.setOrganizacion(organization);
+        imported.setArchivoOrigen("censo.xlsx");
+        imported.setCounts(10, 8, 2);
+        var pageable = PageRequest.of(0, 20);
+        when(imports.findAll(pageable)).thenReturn(new PageImpl<>(List.of(imported), pageable, 1));
+        var service = new PersonalRegistryService(imports, rows, people, assignments, organizations, sectors, authentication, parser);
+
+        var result = service.listImports(pageable);
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals("Hospital Norte", result.getContent().get(0).organizacionNombre());
     }
 }

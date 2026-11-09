@@ -1,6 +1,7 @@
 package com.sisge.ms.dto.personal;
 
 import jakarta.validation.constraints.*;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -16,6 +17,8 @@ public final class PersonalDtos {
             Long situacionRevistaId, Long agrupamientoId, Long funcionId, Long tipoAfectacionId, Long tituloId, String adicionalMh, String adicionalJefatura, LocalDate fechaInicio, Integer antiguedadAnios,
             Boolean afectado, boolean revisada, String errores) {}
     public record ImportDetail(Long id, Long organizacionId, String archivoOrigen, String estado, int filasProcesadas, int filasValidas, int filasConErrores, List<Row> filas) {}
+    public record ImportSummary(Long id, Long organizacionId, String organizacionNombre, String archivoOrigen,
+            String estado, Instant fechaCreacion, int filasProcesadas, int filasValidas, int filasConErrores) {}
     public record Person(Long id, String dni, String cuil, String nombres, String apellido, String sexo,
             LocalDate fechaNacimiento, Long organizacionId, String organizacion, Long sectorId, String sector,
             String escalafon, String categoria, String situacionRevista, String agrupamiento, String funcion,
