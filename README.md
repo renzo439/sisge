@@ -63,7 +63,9 @@ La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL
    mysql -u root -p sisge < database\02-reference-data.sql
    mysql -u root -p sisge < database\03-add-organizacion-udeo.sql
    mysql -u root -p sisge < database\04-personal-registry.sql
-   mysql -u root -p sisge < database\05-personal-normalization.sql
+    mysql -u root -p sisge < database\05-personal-normalization.sql
+    mysql -u root -p sisge < database\06-organizaciones-gestionar.sql
+    mysql -u root -p sisge < database\07-permisos-gestionar.sql
    ```
 
 3. Para reemplazar algún valor de `.env` solo durante la sesión actual de PowerShell, defina las variables de entorno:
@@ -113,6 +115,71 @@ Invoke-RestMethod `
 ```
 
 Incluya el token recibido en el encabezado `Authorization` con el esquema `Bearer` para los demás endpoints.
+
+## Gestión de roles y organizaciones
+
+La administración central gestiona los roles con el permiso global `ROLES_GESTIONAR`:
+
+```text
+GET    /api/v1/roles
+GET    /api/v1/roles/{id}
+POST   /api/v1/roles
+PUT    /api/v1/roles/{id}
+DELETE /api/v1/roles/{id}
+```
+
+Las operaciones de alta y modificación reciben `nombre`, `descripcion`, `globalRole` y la lista de `permisos` por código. Un rol asignado a usuarios, ya sea como rol de organización o rol global, no puede eliminarse.
+
+Las organizaciones se gestionan con el permiso global `ORGANIZACIONES_GESTIONAR`:
+
+```text
+GET    /api/v1/admin/organizaciones
+GET    /api/v1/admin/organizaciones/{id}
+POST   /api/v1/admin/organizaciones
+PUT    /api/v1/admin/organizaciones/{id}
+DELETE /api/v1/admin/organizaciones/{id}
+```
+
+Las operaciones de alta y modificación reciben `nombre`, `udeo` (único) y `descripcion`. Una organización con usuarios asignados, importaciones, designaciones u otros datos asociados no puede eliminarse.
+
+## Gestión de permisos
+
+Los permisos se administran con el permiso global `PERMISOS_GESTIONAR` (la consulta también admite `ROLES_GESTIONAR`, para cargar el catálogo desde la edición de roles):
+
+```text
+GET    /api/v1/permisos
+GET    /api/v1/permisos/{id}
+POST   /api/v1/permisos
+PUT    /api/v1/permisos/{id}
+DELETE /api/v1/permisos/{id}
+```
+
+Las operaciones de alta y modificación reciben `codigo` y `descripcion`; el código se normaliza a mayúsculas, debe ser único y solo admite letras, dígitos y guiones bajos. Un permiso asignado a roles no puede eliminarse. Cambiar el código de un permiso que el sistema evalúa (por ejemplo `ROLES_GESTIONAR`) altera la autorización, porque los servicios lo referencian por código.
+
+## Gestión de usuarios
+
+Los usuarios de una organización se consultan y su rol se edita con el permiso `USUARIOS_GESTIONAR` sobre esa organización:
+
+```text
+GET  /api/v1/organizaciones/{organizacionId}/usuarios
+GET  /api/v1/organizaciones/{organizacionId}/usuarios/{usuarioId}
+POST /api/v1/organizaciones/{organizacionId}/usuarios
+PUT  /api/v1/organizaciones/{organizacionId}/usuarios/{usuarioId}/rol
+```
+
+El listado y el detalle devuelven `usuarioId`, `nombre`, `apellido`, `email`, `estado`, `rol` y `createdAt` de la membresía. El cambio de rol recibe `{ "rol": "OPERADOR" }`.
+
+Los usuarios se consultan globalmente y su rol global se edita desde la administración central, con el permiso global `USUARIOS_GESTIONAR`:
+
+```text
+GET /api/v1/admin/usuarios?q={texto}
+GET /api/v1/admin/usuarios/{usuarioId}
+PUT /api/v1/admin/usuarios/{usuarioId}/rol-global
+```
+
+El listado global acepta `q` para buscar por nombre, apellido o email e incluye el `rolGlobal` de cada usuario (o `null`). El rol global se asigna con `{ "rol": "ADMIN_GENERAL" }` o se quita con `rol` nulo o vacío.
+
+Un rol global no puede asignarse a una membresía de organización y solo un rol global puede usarse como rol global. Los cambios de permisos son efectivos de inmediato: los permisos se evalúan contra la base en cada petición, sin depender del token emitido.
 
 ## Flujo de importación
 
