@@ -66,6 +66,8 @@ La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL
     mysql -u root -p sisge < database\05-personal-normalization.sql
     mysql -u root -p sisge < database\06-organizaciones-gestionar.sql
     mysql -u root -p sisge < database\07-permisos-gestionar.sql
+    mysql -u root -p sisge < database\08-historical-hospital-raw.sql
+    mysql -u root -p sisge < database\09-historical-dni.sql
    ```
 
 3. Para reemplazar algún valor de `.env` solo durante la sesión actual de PowerShell, defina las variables de entorno:
@@ -191,7 +193,9 @@ Un rol global no puede asignarse a una membresía de organización y solo un rol
 
 Para migrar un Excel histórico que ya fue revisado, un administrador central con los permisos `IMPORTACIONES_APROBAR` e `IMPORTACIONES_CERRAR` puede enviar el archivo mediante `multipart/form-data` a `POST /api/v1/admin/importaciones/organizaciones/{organizacionId}/migrar-historico`. La importación se registra directamente como `CERRADA` y sus filas se copian al histórico en la misma transacción. El archivo debe cumplir el mismo formato y no contener filas con errores.
 
-Para un Excel histórico consolidado con varios hospitales, use `POST /api/v1/admin/importaciones/migrar-historico-consolidado` con una parte `file` de tipo `multipart/form-data`. El archivo debe incluir las columnas `Hospital` y `UDEO` antes de las columnas habituales. `UDEO` identifica de forma única la organización: las organizaciones inexistentes se crean automáticamente con el nombre de `Hospital`, y se genera una importación cerrada por cada UDEO. Para archivos grandes, las filas se insertan en lotes de 500 y la respuesta contiene solo el resumen de cada importación creada. Si alguna fila tiene errores bloqueantes, la respuesta `409` incluye en `details` la fila de Excel (`fila`) y las reglas incumplidas (`errores`).
+Para un Excel histórico consolidado con varios hospitales, use `POST /api/v1/admin/importaciones/migrar-historico-consolidado` con una parte `file` de tipo `multipart/form-data`. El archivo debe incluir las columnas `Hospital` y `UDEO` antes de las columnas habituales. Los valores de `Hospital` y `UDEO` se guardan literalmente tal como vienen en el Excel: no se reemplazan por un id ni se crean organizaciones automáticamente. Se genera una importación cerrada por cada combinación de `Hospital` y `UDEO`; la organización queda nula y puede asociarse más adelante. Para archivos grandes, las filas se insertan en lotes de 500 y la respuesta contiene solo el resumen de cada importación creada. Si alguna fila tiene errores bloqueantes, la respuesta `409` incluye en `details` la fila de Excel (`fila`) y las reglas incumplidas (`errores`), y no se migra ninguna fila.
+
+El histórico se puede consultar por `organizacionId`, `importacionId`, `reemplazante`, `dni`, `cuil`, `titular`, `lugarTrabajo`, `fechaCarga`, `hospital` o `udeo`. El `dni` se deriva del CUIL al migrar. Las filas migradas sin organización solo son visibles para usuarios globales con `REEMPLAZANTES_VER` hasta que se les asocie una organización.
 
 Estados permitidos:
 

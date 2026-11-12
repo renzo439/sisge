@@ -10,10 +10,10 @@ public final class ImportacionDtos {
                    java.math.BigDecimal aDeuda,String titular,String categoriaTitular,java.time.LocalDate licenciaDesde,
                    java.time.LocalDate licenciaHasta,Integer cantidadDias,String tipoLicenciaExcel,String agrupamiento,
                    String funcionTitular,String tipoLicencia,String observaciones,String lugarTrabajo,String errores){}
- public record Detail(Long id,Long organizacionId,String archivoOrigen,ImportStatus estado,int cantidadFilas,int cantidadFilasValidas,
+ public record Detail(Long id,Long organizacionId,String hospitalNombre,String udeo,String archivoOrigen,ImportStatus estado,int cantidadFilas,int cantidadFilasValidas,
                       int cantidadFilasConError,String motivoObservacion,String motivoRechazo,java.time.Instant fechaCreacion,
                       java.time.Instant fechaEnvioRevision,java.time.Instant fechaRevision,java.time.Instant fechaCierre,List<Row> registros){}
- public record Summary(Long id,Long organizacionId,String organizacionNombre,String archivoOrigen,ImportStatus estado,
+ public record Summary(Long id,Long organizacionId,String organizacionNombre,String hospitalNombre,String udeo,String archivoOrigen,ImportStatus estado,
                        String creadoPorEmail,java.time.Instant fechaCreacion,java.time.Instant fechaEnvioRevision,
                        int cantidadFilas,int cantidadFilasConError){}
 }

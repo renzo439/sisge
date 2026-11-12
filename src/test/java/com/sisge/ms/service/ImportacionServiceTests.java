@@ -108,8 +108,6 @@ class ImportacionServiceTests {
         when(file.getOriginalFilename()).thenReturn("historico-consolidado.xlsx");
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(parser.parseHistorical(any())).thenReturn(List.of(historicalRow));
-        when(organizations.findByUdeo("6118")).thenReturn(Optional.empty());
-        when(organizations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(authentication.entity("admin@example.com")).thenReturn(administrator);
 
         ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser, jdbc);
@@ -118,7 +116,9 @@ class ImportacionServiceTests {
 
         assertEquals(1, results.size());
         assertEquals(ImportStatus.CERRADA, results.get(0).estado());
-        verify(organizations).save(any());
+        assertEquals("Calilegua", results.get(0).hospitalNombre());
+        assertEquals("6118", results.get(0).udeo());
+        assertEquals(null, results.get(0).organizacionId());
         verify(jdbc, org.mockito.Mockito.times(2)).batchUpdate(any(String.class), any(List.class), eq(500), any());
     }
 
@@ -138,9 +138,6 @@ class ImportacionServiceTests {
         when(file.getOriginalFilename()).thenReturn("historico-consolidado.xlsx");
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(parser.parseHistorical(any())).thenReturn(List.of(historicalRow));
-        when(organizations.findByUdeo("6118")).thenReturn(Optional.empty());
-        when(organizations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(authentication.entity("admin@example.com")).thenReturn(administrator);
 
         ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser, jdbc);
 
