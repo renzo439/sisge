@@ -148,6 +148,7 @@ El operador autorizado para la organización carga el archivo:
 POST /api/v1/organizaciones/{organizacionId}/personal/importaciones
 Content-Type: multipart/form-data
 file=<archivo.xlsx>
+
 ```
 
 La respuesta contiene el `importacionId`, la cantidad de filas procesadas, válidas y con errores. Consulte el estado y cada fila con:

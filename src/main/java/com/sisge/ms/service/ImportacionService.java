@@ -310,7 +310,7 @@ public class ImportacionService {
                 """, importRows, 500, (statement, row) -> {
                     statement.setLong(1, importacion.getId());
                     statement.setInt(2, row.getFilaOrigen());
-                    setReplacementValues(statement, 3, row);
+                    setReplacementValues(statement, 3, row, true);
                 });
     }
 
@@ -326,12 +326,12 @@ public class ImportacionService {
                     statement.setLong(2, importacion.getId());
                     statement.setString(3, importacion.getArchivoOrigen());
                     statement.setInt(4, row.getFilaOrigen());
-                    setReplacementValues(statement, 5, row);
+                    setReplacementValues(statement, 5, row, false);
                 });
     }
 
-    private void setReplacementValues(PreparedStatement statement, int parameter, ImportacionReemplazante row)
-            throws SQLException {
+    private void setReplacementValues(PreparedStatement statement, int parameter, ImportacionReemplazante row,
+            boolean includeErrors) throws SQLException {
         statement.setString(parameter++, row.getReemplazante());
         statement.setString(parameter++, row.getCuil());
         statement.setString(parameter++, row.getCategoriaReemplazante());
@@ -351,7 +351,9 @@ public class ImportacionService {
         statement.setString(parameter++, row.getTipoLicencia());
         statement.setString(parameter++, row.getObservaciones());
         statement.setString(parameter++, row.getLugarTrabajo());
-        statement.setString(parameter, row.getErrores());
+        if (includeErrors) {
+            statement.setString(parameter, row.getErrores());
+        }
     }
 
     private void requireAccess(Importacion importacion, CurrentUser user) {
