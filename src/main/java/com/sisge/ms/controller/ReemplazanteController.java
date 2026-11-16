@@ -42,7 +42,8 @@ public class ReemplazanteController {
         Specification<ReemplazanteHistorico> specification = (root, query, builder) -> builder.conjunction();
         if (organizacionId != null) specification = specification.and((root, query, builder) ->
                 builder.equal(root.get("organizacion").get("id"), organizacionId));
-        if (cuil != null) specification = specification.and((root, query, builder) -> builder.equal(root.get("cuil"), cuil));
+        if (cuil != null && !cuil.isBlank()) specification = specification.and((root, query, builder) ->
+                builder.like(root.get("cuil"), "%" + cuil.trim() + "%"));
         if (reemplazante != null) specification = specification.and((root, query, builder) ->
                 builder.like(builder.lower(root.get("reemplazante")), "%" + reemplazante.toLowerCase() + "%"));
         if (titular != null) specification = specification.and((root, query, builder) ->

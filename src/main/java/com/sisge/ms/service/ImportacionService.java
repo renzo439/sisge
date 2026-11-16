@@ -85,19 +85,15 @@ public class ImportacionService {
         user.requireGlobal("IMPORTACIONES_APROBAR");
         user.requireGlobal("IMPORTACIONES_CERRAR");
         List<ExcelImportParser.HistoricalRow> parsed = parseHistoricalUpload(file);
-        Map<String, List<ExcelImportParser.HistoricalRow>> byUdeo = parsed.stream()
-                .collect(java.util.stream.Collectors.groupingBy(ExcelImportParser.HistoricalRow::udeo,
+        Map<Long, List<ExcelImportParser.HistoricalRow>> byOrganization = parsed.stream()
+                .collect(java.util.stream.Collectors.groupingBy(this::organizationId,
                         LinkedHashMap::new, java.util.stream.Collectors.toList()));
         Usuario creator = authentication.entity(user.email());
-        return byUdeo.values().stream().map(hospitalRows -> {
-            String hospital = hospitalRows.get(0).hospital();
-            if (hospitalRows.stream().anyMatch(row -> !hospital.equals(row.hospital()))) {
-                throw ApiException.conflict("UDEO is associated with more than one hospital name: "
-                        + hospitalRows.get(0).udeo());
-            }
-            Organizacion organization = findOrCreateOrganization(hospitalRows.get(0).udeo(), hospital);
+        return byOrganization.entrySet().stream().map(entry -> {
+            Organizacion organization = organizations.findById(entry.getKey())
+                    .orElseThrow(() -> ApiException.conflict("Organization not found for id " + entry.getKey()));
             return closeHistoricalBatch(organization, creator, file.getOriginalFilename(),
-                    hospitalRows.stream().map(ExcelImportParser.HistoricalRow::reemplazante).toList());
+                    entry.getValue().stream().map(ExcelImportParser.HistoricalRow::reemplazante).toList());
         }).toList();
     }
 
@@ -240,18 +236,31 @@ public class ImportacionService {
         }
     }
 
-    private Organizacion findOrCreateOrganization(String udeo, String hospital) {
-        return organizations.findByUdeo(udeo).map(organization -> {
-            if (!organization.getNombre().equals(hospital)) {
-                throw ApiException.conflict("Hospital name does not match UDEO " + udeo);
-            }
-            return organization;
-        }).orElseGet(() -> {
-            Organizacion organization = new Organizacion();
-            organization.setUdeo(udeo);
-            organization.setNombre(hospital);
-            return organizations.save(organization);
-        });
+    private Long organizationId(ExcelImportParser.HistoricalRow row) {
+        Long hospitalId = parseOrganizationId(row.hospital());
+        if (hospitalId == null) {
+            throw ApiException.bad("Hospital must contain a numeric organization id");
+        }
+        Long udeoId = parseOrganizationId(row.udeo());
+        if (udeoId == null) {
+            throw ApiException.bad("UDEO must contain a numeric organization id");
+        }
+        if (!hospitalId.equals(udeoId)) {
+            throw ApiException.conflict("Hospital and UDEO organization ids do not match: "
+                    + hospitalId + " vs " + udeoId);
+        }
+        return hospitalId;
+    }
+
+    private Long parseOrganizationId(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value.trim());
+        } catch (NumberFormatException exception) {
+            return null;
+        }
     }
 
     private ImportacionDtos.Detail closeHistorical(Organizacion organization, CurrentUser user, String filename,
