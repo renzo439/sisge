@@ -114,6 +114,16 @@ Invoke-RestMethod `
 
 Incluya el token recibido en el encabezado `Authorization` con el esquema `Bearer` para los demás endpoints.
 
+## Documentación de la API (Swagger)
+
+La API se documenta automáticamente con springdoc-openapi. Con la aplicación en ejecución:
+
+- Swagger UI: `http://localhost:8081/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8081/v3/api-docs`
+- OpenAPI YAML: `http://localhost:8081/v3/api-docs.yaml`
+
+Para probar endpoints protegidos, obtenga el token JWT y use el botón **Authorize** de Swagger UI (esquema `bearerAuth`).
+
 ## Flujo de importación
 
 1. Un operador sube un `.xlsx` mediante `multipart/form-data`, con la parte `file`, a `POST /api/v1/organizaciones/{organizacionId}/importaciones/upload`.
