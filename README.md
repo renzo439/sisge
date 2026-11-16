@@ -37,6 +37,13 @@ El proyecto usa Maven Wrapper, por lo que no es necesario instalar Maven globalm
 
 La API quedará disponible en `http://localhost:8080`. Docker espera a que MySQL acepte conexiones antes de iniciar la aplicación. MySQL ejecuta automáticamente los scripts versionados de `database/` (incluido `04-personal-registry.sql`) solo al crear el volumen `mysql-data` por primera vez. La aplicación usa automáticamente `MYSQL_PASSWORD` para conectarse a MySQL, por lo que no debe definir `DB_PASSWORD` cuando usa Docker. Para una instalación limpia, cree un volumen Docker nuevo o ejecute todos los scripts en orden en una base vacía; no elimine un volumen que contenga datos.
 
+El `Dockerfile` es multi-etapa: compila el proyecto desde el código fuente dentro de la imagen, por lo que no hace falta generar el jar manualmente. Después de actualizar el código, reconstruya la imagen para que los cambios se apliquen:
+
+```powershell
+docker compose build --no-cache app
+docker compose up -d
+```
+
 > No elimine ni reinicialice el volumen de MySQL si contiene datos que desea conservar.
 >
 > Para actualizar un volumen existente, ejecute cada script nuevo manualmente. Por ejemplo, para aplicar la normalización del módulo de personal:
