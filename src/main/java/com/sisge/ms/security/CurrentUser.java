@@ -1,6 +1,7 @@
 package com.sisge.ms.security;
 
 import com.sisge.ms.exception.ApiException;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,6 +19,12 @@ public record CurrentUser(
             throw ApiException.forbidden("Authentication required");
         }
         return user;
+    }
+
+    public Set<String> permissions() {
+        Set<String> permissions = new HashSet<>(globalPermissions);
+        organizationPermissions.values().forEach(permissions::addAll);
+        return Set.copyOf(permissions);
     }
 
     public void requireGlobal(String permission) {

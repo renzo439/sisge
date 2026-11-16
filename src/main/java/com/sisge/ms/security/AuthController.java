@@ -3,8 +3,11 @@ package com.sisge.ms.security;
 import com.sisge.ms.exception.ApiException;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +32,10 @@ public class AuthController {
     public record Token(String accessToken, String tokenType) {
     }
 
+    public record Me(Long id, String email, boolean global, Set<String> globalPermissions,
+            Map<Long, Set<String>> organizationPermissions) {
+    }
+
     @PostMapping("/login")
     public Token login(@RequestBody @jakarta.validation.Valid Login login) {
         var user = users.entity(login.email());
@@ -36,5 +43,12 @@ public class AuthController {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
         return new Token(jwt.create(users.load(user.getEmail())), "Bearer");
+    }
+
+    @GetMapping("/me")
+    public Me me() {
+        CurrentUser user = CurrentUser.get();
+        return new Me(user.id(), user.email(), user.global(), user.globalPermissions(),
+                user.organizationPermissions());
     }
 }

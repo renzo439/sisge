@@ -1,6 +1,7 @@
 package com.sisge.ms.security;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sisge.ms.exception.ApiException;
@@ -21,5 +22,13 @@ class CurrentUserTests {
     void globalRolesUseOnlyGlobalPermissions() {
         CurrentUser user = new CurrentUser(1L, "admin@example.com", Set.of("IMPORTACIONES_VER_TODAS"), Map.of(), true);
         assertDoesNotThrow(() -> user.requireForOrganization(20L, "IMPORTACIONES_VER_TODAS"));
+    }
+
+    @Test
+    void permissionsCombineGlobalAndOrganizationPermissions() {
+        CurrentUser user = new CurrentUser(1L, "user@example.com", Set.of("PERSONAL_VER"),
+                Map.of(10L, Set.of("REEMPLAZANTES_VER"), 20L, Set.of("IMPORTACIONES_VER_PROPIAS")), false);
+        assertEquals(Set.of("PERSONAL_VER", "REEMPLAZANTES_VER", "IMPORTACIONES_VER_PROPIAS"),
+                user.permissions());
     }
 }

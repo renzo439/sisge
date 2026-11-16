@@ -125,6 +125,17 @@ Invoke-RestMethod `
 
 Incluya el token recibido en el encabezado `Authorization` con el esquema `Bearer` para los demás endpoints.
 
+Para obtener el usuario autenticado y sus permisos:
+
+```powershell
+Invoke-RestMethod `
+  -Method Get `
+  -Uri "http://localhost:8081/api/v1/auth/me" `
+  -Headers @{ Authorization = "Bearer $token" }
+```
+
+Devuelve `id`, `email`, `global`, `globalPermissions` y `organizationPermissions` (permisos por id de organización). El módulo de reemplazos requiere el permiso `REEMPLAZANTES_VER`, global o en la organización consultada. El backend lo valida con Spring Security y el frontend debe usar esta respuesta para mostrar u ocultar el módulo.
+
 ## Documentación de la API (Swagger)
 
 La API se documenta automáticamente con springdoc-openapi. Con la aplicación en ejecución:
