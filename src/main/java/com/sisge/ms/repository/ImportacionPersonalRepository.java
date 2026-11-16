@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.*;
 
 public interface ImportacionPersonalRepository extends JpaRepository<ImportacionPersonal, Long> {
     Page<ImportacionPersonal> findByOrganizacionIdIn(Collection<Long> organizationIds, Pageable pageable);
+    boolean existsByOrganizacionId(Long organizationId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select i from ImportacionPersonal i where i.id = :id")

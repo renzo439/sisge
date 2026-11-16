@@ -93,25 +93,21 @@ class ImportacionServiceTests {
     }
 
     @Test
-    void closesImportationForExistingOrganizationInConsolidatedHistoricalWorkbook() throws Exception {
+    void closesConsolidatedHistoricalWorkbookWithLiteralHospital() throws Exception {
         CurrentUser user = new CurrentUser(1L, "admin@example.com",
                 Set.of("IMPORTACIONES_APROBAR", "IMPORTACIONES_CERRAR"), Map.of(), true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, null, List.of()));
-        Organizacion organization = new Organizacion();
-        organization.setNombre("Calilegua");
-        organization.setUdeo("6118");
         ImportacionReemplazante row = new ImportacionReemplazante();
         row.setFilaOrigen(2);
         row.setErrores("");
         ExcelImportParser.HistoricalRow historicalRow =
-                new ExcelImportParser.HistoricalRow("7", "7", row);
+                new ExcelImportParser.HistoricalRow("Calilegua", "6118", row);
 
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("historico-consolidado.xlsx");
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(parser.parseHistorical(any())).thenReturn(List.of(historicalRow));
-        when(organizations.findById(7L)).thenReturn(Optional.of(organization));
         when(authentication.entity("admin@example.com")).thenReturn(administrator);
 
         ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser, jdbc);
@@ -120,8 +116,9 @@ class ImportacionServiceTests {
 
         assertEquals(1, results.size());
         assertEquals(ImportStatus.CERRADA, results.get(0).estado());
-        verify(organizations).findById(7L);
-        org.mockito.Mockito.verify(organizations, org.mockito.Mockito.never()).save(any());
+        assertEquals("Calilegua", results.get(0).hospitalNombre());
+        assertEquals("6118", results.get(0).udeo());
+        assertEquals(null, results.get(0).organizacionId());
         verify(jdbc, org.mockito.Mockito.times(2)).batchUpdate(any(String.class), any(List.class), eq(500), any());
     }
 
@@ -135,17 +132,13 @@ class ImportacionServiceTests {
         row.setFilaOrigen(42);
         row.setErrores("periodo:INVALID_RANGE;cuil:INVALID");
         ExcelImportParser.HistoricalRow historicalRow =
-                new ExcelImportParser.HistoricalRow("7", "7", row);
-        Organizacion organization = new Organizacion();
-        organization.setNombre("Calilegua");
-        organization.setUdeo("6118");
+                new ExcelImportParser.HistoricalRow("Calilegua", "6118", row);
 
         when(file.isEmpty()).thenReturn(false);
         when(file.getOriginalFilename()).thenReturn("historico-consolidado.xlsx");
         when(file.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(parser.parseHistorical(any())).thenReturn(List.of(historicalRow));
-        when(organizations.findById(7L)).thenReturn(Optional.of(organization));
-        when(authentication.entity("admin@example.com")).thenReturn(administrator);
+
 
         ImportacionService service = new ImportacionService(imports, rows, history, organizations, authentication, parser, jdbc);
 

@@ -59,6 +59,8 @@ public class ImportacionService {
         Importacion importacion = new Importacion();
         importacion.setOrganizacion(organizations.findById(organizationId)
                 .orElseThrow(() -> ApiException.notFound("Organization not found")));
+        importacion.setHospitalNombre(importacion.getOrganizacion().getNombre());
+        importacion.setUdeo(importacion.getOrganizacion().getUdeo());
         importacion.setCreadoPor(authentication.entity(user.email()));
         importacion.setArchivoOrigen(file.getOriginalFilename());
         importacion.setCantidadFilas(parsed.size());
@@ -85,15 +87,21 @@ public class ImportacionService {
         user.requireGlobal("IMPORTACIONES_APROBAR");
         user.requireGlobal("IMPORTACIONES_CERRAR");
         List<ExcelImportParser.HistoricalRow> parsed = parseHistoricalUpload(file);
-        Map<Long, List<ExcelImportParser.HistoricalRow>> byOrganization = parsed.stream()
-                .collect(java.util.stream.Collectors.groupingBy(this::organizationId,
+        List<ImportacionReemplazante> allRows = parsed.stream()
+                .map(ExcelImportParser.HistoricalRow::reemplazante)
+                .toList();
+        if (allRows.stream().anyMatch(row -> row.getErrores() != null && !row.getErrores().isBlank())) {
+            throw ApiException.conflict("Historical importation has blocking row errors", blockingRowErrors(allRows));
+        }
+        Map<String, List<ExcelImportParser.HistoricalRow>> byHospitalAndUdeo = parsed.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        row -> row.hospital() + "\u0000" + row.udeo(),
                         LinkedHashMap::new, java.util.stream.Collectors.toList()));
         Usuario creator = authentication.entity(user.email());
-        return byOrganization.entrySet().stream().map(entry -> {
-            Organizacion organization = organizations.findById(entry.getKey())
-                    .orElseThrow(() -> ApiException.conflict("Organization not found for id " + entry.getKey()));
-            return closeHistoricalBatch(organization, creator, file.getOriginalFilename(),
-                    entry.getValue().stream().map(ExcelImportParser.HistoricalRow::reemplazante).toList());
+        return byHospitalAndUdeo.values().stream().map(hospitalRows -> {
+            ExcelImportParser.HistoricalRow first = hospitalRows.get(0);
+            return closeHistoricalBatch(first.hospital(), first.udeo(), creator, file.getOriginalFilename(),
+                    hospitalRows.stream().map(ExcelImportParser.HistoricalRow::reemplazante).toList());
         }).toList();
     }
 
@@ -139,7 +147,9 @@ public class ImportacionService {
         Importacion importacion = find(id);
         CurrentUser user = CurrentUser.get();
         requireAccess(importacion, user);
-        user.requireForOrganization(importacion.getOrganizacion().getId(), "IMPORTACIONES_EDITAR_PROPIAS");
+        if (importacion.getOrganizacion() != null) {
+            user.requireForOrganization(importacion.getOrganizacion().getId(), "IMPORTACIONES_EDITAR_PROPIAS");
+        }
         requireCreator(importacion, user);
         if (importacion.getEstado() != ImportStatus.EN_PROCESO && importacion.getEstado() != ImportStatus.OBSERVADA) {
             throw ApiException.conflict("Importation is not editable");
@@ -158,7 +168,9 @@ public class ImportacionService {
         Importacion importacion = find(id);
         CurrentUser user = CurrentUser.get();
         requireAccess(importacion, user);
-        user.requireForOrganization(importacion.getOrganizacion().getId(), "IMPORTACIONES_ENVIAR_REVISION");
+        if (importacion.getOrganizacion() != null) {
+            user.requireForOrganization(importacion.getOrganizacion().getId(), "IMPORTACIONES_ENVIAR_REVISION");
+        }
         requireCreator(importacion, user);
         if (importacion.getEstado() != ImportStatus.EN_PROCESO && importacion.getEstado() != ImportStatus.OBSERVADA) {
             throw ApiException.conflict("Importation cannot be submitted");
@@ -236,37 +248,13 @@ public class ImportacionService {
         }
     }
 
-    private Long organizationId(ExcelImportParser.HistoricalRow row) {
-        Long hospitalId = parseOrganizationId(row.hospital());
-        if (hospitalId == null) {
-            throw ApiException.bad("Hospital must contain a numeric organization id");
-        }
-        Long udeoId = parseOrganizationId(row.udeo());
-        if (udeoId == null) {
-            throw ApiException.bad("UDEO must contain a numeric organization id");
-        }
-        if (!hospitalId.equals(udeoId)) {
-            throw ApiException.conflict("Hospital and UDEO organization ids do not match: "
-                    + hospitalId + " vs " + udeoId);
-        }
-        return hospitalId;
-    }
-
-    private Long parseOrganizationId(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return Long.valueOf(value.trim());
-        } catch (NumberFormatException exception) {
-            return null;
-        }
-    }
 
     private ImportacionDtos.Detail closeHistorical(Organizacion organization, CurrentUser user, String filename,
             List<ImportacionReemplazante> importRows) {
         Importacion importacion = new Importacion();
         importacion.setOrganizacion(organization);
+        importacion.setHospitalNombre(organization.getNombre());
+        importacion.setUdeo(organization.getUdeo());
         importacion.setCreadoPor(authentication.entity(user.email()));
         importacion.setArchivoOrigen(filename);
         importacion.setCantidadFilas(importRows.size());
@@ -282,13 +270,14 @@ public class ImportacionService {
         return detail(importacion, importRows);
     }
 
-    private ImportacionDtos.Summary closeHistoricalBatch(Organizacion organization, Usuario creator, String filename,
+    private ImportacionDtos.Summary closeHistoricalBatch(String hospital, String udeo, Usuario creator, String filename,
             List<ImportacionReemplazante> importRows) {
         if (importRows.stream().anyMatch(row -> row.getErrores() != null && !row.getErrores().isBlank())) {
             throw ApiException.conflict("Historical importation has blocking row errors", blockingRowErrors(importRows));
         }
         Importacion importacion = new Importacion();
-        importacion.setOrganizacion(organization);
+        importacion.setHospitalNombre(hospital);
+        importacion.setUdeo(udeo);
         importacion.setCreadoPor(creator);
         importacion.setArchivoOrigen(filename);
         importacion.setCantidadFilas(importRows.size());
@@ -325,17 +314,22 @@ public class ImportacionService {
 
     private void batchInsertHistoricalRows(Importacion importacion, List<ImportacionReemplazante> importRows) {
         jdbc.batchUpdate("""
-                INSERT INTO reemplazantes_historico (organizacion_id, importacion_id, archivo_origen, fila_origen,
-                reemplazante, cuil, categoria_reemplazante, instrumento_legal, periodo_desde, periodo_hasta,
-                a_pagar, a_deuda, titular, categoria_titular, licencia_desde, licencia_hasta, cantidad_dias,
-                tipo_licencia_excel, agrupamiento, funcion_titular, tipo_licencia, observaciones, lugar_trabajo, fecha_cierre)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO reemplazantes_historico (organizacion_id, hospital_nombre, udeo, importacion_id,
+                archivo_origen, fila_origen, reemplazante, cuil, categoria_reemplazante, instrumento_legal,
+                periodo_desde, periodo_hasta, a_pagar, a_deuda, titular, categoria_titular, licencia_desde,
+                licencia_hasta, cantidad_dias, tipo_licencia_excel, agrupamiento, funcion_titular, tipo_licencia,
+                observaciones, lugar_trabajo, dni, fecha_cierre)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, importRows, 500, (statement, row) -> {
-                    statement.setLong(1, importacion.getOrganizacion().getId());
-                    statement.setLong(2, importacion.getId());
-                    statement.setString(3, importacion.getArchivoOrigen());
-                    statement.setInt(4, row.getFilaOrigen());
-                    setReplacementValues(statement, 5, row, false);
+                    statement.setObject(1, importacion.getOrganizacion() == null
+                            ? null : importacion.getOrganizacion().getId());
+                    statement.setString(2, importacion.getHospitalNombre());
+                    statement.setString(3, importacion.getUdeo());
+                    statement.setLong(4, importacion.getId());
+                    statement.setString(5, importacion.getArchivoOrigen());
+                    statement.setInt(6, row.getFilaOrigen());
+                    setReplacementValues(statement, 7, row, false);
+                    statement.setString(26, ReemplazanteHistorico.dniFromCuil(row.getCuil()));
                 });
     }
 
@@ -366,8 +360,11 @@ public class ImportacionService {
     }
 
     private void requireAccess(Importacion importacion, CurrentUser user) {
-        if (user.global()) user.requireGlobal("IMPORTACIONES_VER_TODAS");
-        else user.requireForOrganization(importacion.getOrganizacion().getId(), "IMPORTACIONES_VER_PROPIAS");
+        if (user.global() || importacion.getOrganizacion() == null) {
+            user.requireGlobal("IMPORTACIONES_VER_TODAS");
+        } else {
+            user.requireForOrganization(importacion.getOrganizacion().getId(), "IMPORTACIONES_VER_PROPIAS");
+        }
     }
 
     private void requireCreator(Importacion importacion, CurrentUser user) {
@@ -386,14 +383,18 @@ public class ImportacionService {
     }
 
     private ImportacionDtos.Summary summary(Importacion importacion) {
-        return new ImportacionDtos.Summary(importacion.getId(), importacion.getOrganizacion().getId(),
-                importacion.getOrganizacion().getNombre(), importacion.getArchivoOrigen(), importacion.getEstado(),
+        Long organizationId = importacion.getOrganizacion() == null ? null : importacion.getOrganizacion().getId();
+        String organizationName = importacion.getOrganizacion() == null ? null : importacion.getOrganizacion().getNombre();
+        return new ImportacionDtos.Summary(importacion.getId(), organizationId, organizationName,
+                importacion.getHospitalNombre(), importacion.getUdeo(), importacion.getArchivoOrigen(), importacion.getEstado(),
                 importacion.getCreadoPor().getEmail(), importacion.getFechaCreacion(), importacion.getFechaEnvioRevision(),
                 importacion.getCantidadFilas(), importacion.getCantidadFilasConError());
     }
 
     private ImportacionDtos.Detail detail(Importacion importacion, List<ImportacionReemplazante> importRows) {
-        return new ImportacionDtos.Detail(importacion.getId(), importacion.getOrganizacion().getId(), importacion.getArchivoOrigen(),
+        Long organizationId = importacion.getOrganizacion() == null ? null : importacion.getOrganizacion().getId();
+        return new ImportacionDtos.Detail(importacion.getId(), organizationId, importacion.getHospitalNombre(),
+                importacion.getUdeo(), importacion.getArchivoOrigen(),
                 importacion.getEstado(), importacion.getCantidadFilas(), importacion.getCantidadFilasValidas(),
                 importacion.getCantidadFilasConError(), importacion.getMotivoObservacion(), importacion.getMotivoRechazo(),
                 importacion.getFechaCreacion(), importacion.getFechaEnvioRevision(), importacion.getFechaRevision(), importacion.getFechaCierre(),

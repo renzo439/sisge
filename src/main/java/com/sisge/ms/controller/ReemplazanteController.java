@@ -29,8 +29,10 @@ public class ReemplazanteController {
 
     @GetMapping
     public Page<ReemplazanteDtos.View> list(@RequestParam(required = false) Long organizacionId,
-            @RequestParam(required = false) String cuil, @RequestParam(required = false) String reemplazante,
+            @RequestParam(required = false) String dni, @RequestParam(required = false) String cuil,
+            @RequestParam(required = false) String reemplazante,
             @RequestParam(required = false) String titular, @RequestParam(required = false) String lugarTrabajo,
+            @RequestParam(required = false) String hospital, @RequestParam(required = false) String udeo,
             @RequestParam(required = false) Long importacionId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaCarga,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
@@ -42,13 +44,21 @@ public class ReemplazanteController {
         Specification<ReemplazanteHistorico> specification = (root, query, builder) -> builder.conjunction();
         if (organizacionId != null) specification = specification.and((root, query, builder) ->
                 builder.equal(root.get("organizacion").get("id"), organizacionId));
-        if (cuil != null && !cuil.isBlank()) specification = specification.and((root, query, builder) ->
-                builder.like(root.get("cuil"), "%" + cuil.trim() + "%"));
+        if (dni != null && !dni.isBlank()) {
+            String normalizedDni = dni.replaceAll("\\D", "");
+            if (!normalizedDni.isEmpty()) specification = specification.and((root, query, builder) ->
+                    builder.like(root.get("dni"), "%" + normalizedDni + "%"));
+        }
+        if (cuil != null) specification = specification.and((root, query, builder) -> builder.equal(root.get("cuil"), cuil));
         if (reemplazante != null) specification = specification.and((root, query, builder) ->
                 builder.like(builder.lower(root.get("reemplazante")), "%" + reemplazante.toLowerCase() + "%"));
         if (titular != null) specification = specification.and((root, query, builder) ->
                 builder.like(builder.lower(root.get("titular")), "%" + titular.toLowerCase() + "%"));
         if (lugarTrabajo != null) specification = specification.and((root, query, builder) -> builder.equal(root.get("lugarTrabajo"), lugarTrabajo));
+        if (hospital != null && !hospital.isBlank()) specification = specification.and((root, query, builder) ->
+                builder.like(builder.lower(root.get("hospitalNombre")), "%" + hospital.toLowerCase() + "%"));
+        if (udeo != null && !udeo.isBlank()) specification = specification.and((root, query, builder) ->
+                builder.equal(root.get("udeo"), udeo));
         if (importacionId != null) specification = specification.and((root, query, builder) ->
                 builder.equal(root.get("importacion").get("id"), importacionId));
         if (fechaCarga != null) {
@@ -64,7 +74,8 @@ public class ReemplazanteController {
     public ReemplazanteDtos.View get(@PathVariable Long id) {
         ReemplazanteHistorico historical = repository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Historical replacement not found"));
-        CurrentUser.get().requireForOrganization(historical.getOrganizacion().getId(), "REEMPLAZANTES_VER");
+        if (historical.getOrganizacion() == null) CurrentUser.get().requireGlobal("REEMPLAZANTES_VER");
+        else CurrentUser.get().requireForOrganization(historical.getOrganizacion().getId(), "REEMPLAZANTES_VER");
         return ReemplazanteDtos.from(historical);
     }
 }

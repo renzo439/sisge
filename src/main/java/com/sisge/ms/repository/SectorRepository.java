@@ -7,4 +7,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface SectorRepository extends JpaRepository<Sector, Long> {
     Optional<Sector> findByIdAndOrganizacionId(Long id, Long organizacionId);
     Optional<Sector> findByIdAndDependenciaIdAndOrganizacionId(Long id, Long dependenciaId, Long organizacionId);
+    boolean existsByOrganizacionId(Long organizacionId);
 }
