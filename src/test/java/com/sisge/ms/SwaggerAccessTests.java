@@ -1,6 +1,8 @@
 package com.sisge.ms;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -37,5 +39,15 @@ class SwaggerAccessTests {
     @Test
     void swaggerUiIsPublic() throws Exception {
         mvc.perform(get("/swagger-ui/index.html")).andExpect(status().isOk());
+    }
+
+    @Test
+    void loginPreflightAllowsCrossOriginRequests() throws Exception {
+        mvc.perform(options("/api/v1/auth/login")
+                        .header("Origin", "http://192.168.88.233:5173")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://192.168.88.233:5173"));
     }
 }
