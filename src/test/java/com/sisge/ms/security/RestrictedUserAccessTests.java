@@ -152,6 +152,8 @@ class RestrictedUserAccessTests {
                 .andExpect(jsonPath("$.permissions[0]").value("REEMPLAZANTES_VER"))
                 .andExpect(jsonPath("$.organizationPermissions['" + organizationId + "'][0]")
                         .value("REEMPLAZANTES_VER"))
+                .andExpect(jsonPath("$.organizacionId").value(organizationId))
+                .andExpect(jsonPath("$.organizacion.id").value(organizationId))
                 .andExpect(jsonPath("$.organizaciones.length()").value(1));
     }
 

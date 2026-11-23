@@ -16,14 +16,21 @@ class JwtServiceTests {
         CurrentUser user = new CurrentUser(
                 1L,
                 "admin@example.com",
+                null,
+                null,
+                null,
+                null,
+                java.util.List.of(),
                 Set.of("PERSONAL_APROBAR", "PERSONAL_VER"),
                 Map.of(10L, Set.of("PERSONAL_IMPORTAR", "PERSONAL_REVISAR")),
-                true);
+                true,
+                10L);
 
         String token = jwt.create(user);
         String payload = new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8);
 
         assertEquals("admin@example.com", jwt.subject(token));
         assertTrue(payload.contains("\"permissions\":[\"PERSONAL_APROBAR\",\"PERSONAL_IMPORTAR\",\"PERSONAL_REVISAR\",\"PERSONAL_VER\"]"));
+        assertTrue(payload.contains("\"organizacionId\":10"));
     }
 }

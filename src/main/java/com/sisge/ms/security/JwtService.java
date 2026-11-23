@@ -31,7 +31,8 @@ public class JwtService {
 
         String header = b64("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
         String payload = b64("{\"sub\":\"" + escapeJson(user.email()) + "\",\"exp\":" + expiration
-                + ",\"permissions\":" + permissionsJson(permissions) + "}");
+                + ",\"permissions\":" + permissionsJson(permissions)
+                + ",\"organizacionId\":" + (user.organizacionId() == null ? "null" : user.organizacionId()) + "}");
         return header + "." + payload + "." + sign(header + "." + payload);
     }
 

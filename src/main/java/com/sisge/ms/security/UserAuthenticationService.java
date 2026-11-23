@@ -26,6 +26,13 @@ public class UserAuthenticationService {
             .comparing(Organizacion::getNombre, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
             .thenComparing(Organizacion::getId, Comparator.nullsLast(Long::compareTo));
 
+    private static final Comparator<UserOrganization> MEMBERSHIP_ORDER = Comparator
+            .comparing(UserOrganization::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(membership -> membership.getOrganizacion().getNombre(),
+                    Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+            .thenComparing(membership -> membership.getOrganizacion().getId(),
+                    Comparator.nullsLast(Long::compareTo));
+
     private final UserRepository users;
     private final UserOrganizationRepository memberships;
     private final OrganizationRepository organizations;
@@ -51,6 +58,11 @@ public class UserAuthenticationService {
         }
 
         List<UserOrganization> activeMemberships = memberships.findByUsuarioIdAndEstado(user.getId(), "ACTIVO");
+        Long organizacionId = global ? null : activeMemberships.stream()
+                .sorted(MEMBERSHIP_ORDER)
+                .map(membership -> membership.getOrganizacion().getId())
+                .findFirst()
+                .orElse(null);
         Map<Long, Set<String>> organizationPermissions = new HashMap<>();
         activeMemberships.forEach(membership -> {
             Set<String> permissions = new HashSet<>();
@@ -70,7 +82,7 @@ public class UserAuthenticationService {
                 user.getId(), user.getEmail(), user.getUsername(), user.getNombre(), user.getApellido(),
                 user.getRolGlobal() == null ? null : user.getRolGlobal().getNombre(),
                 List.copyOf(organizationList), Set.copyOf(globalPermissions),
-                Map.copyOf(organizationPermissions), global);
+                Map.copyOf(organizationPermissions), global, organizacionId);
     }
 
     public Usuario entity(String identifier) {

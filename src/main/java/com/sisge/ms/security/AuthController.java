@@ -35,8 +35,9 @@ public class AuthController {
     }
 
     public record Me(Long id, String nombre, String apellido, String username, String email, String rolGlobal,
-            boolean global, Set<String> permissions, List<OrganizationDtos.Summary> organizaciones,
-            Set<String> globalPermissions, Map<Long, Set<String>> organizationPermissions) {
+            boolean global, Set<String> permissions, Long organizacionId, OrganizationDtos.Summary organizacion,
+            List<OrganizationDtos.Summary> organizaciones, Set<String> globalPermissions,
+            Map<Long, Set<String>> organizationPermissions) {
     }
 
     @PostMapping("/login")
@@ -51,8 +52,12 @@ public class AuthController {
     @GetMapping("/me")
     public Me me() {
         CurrentUser user = CurrentUser.get();
+        OrganizationDtos.Summary organizacion = user.organizacionId() == null ? null : user.organizaciones().stream()
+                .filter(candidate -> user.organizacionId().equals(candidate.id()))
+                .findFirst()
+                .orElse(null);
         return new Me(user.id(), user.nombre(), user.apellido(), user.username(), user.email(), user.rolGlobal(),
-                user.global(), user.permissions(), user.organizaciones(), user.globalPermissions(),
-                user.organizationPermissions());
+                user.global(), user.permissions(), user.organizacionId(), organizacion, user.organizaciones(),
+                user.globalPermissions(), user.organizationPermissions());
     }
 }

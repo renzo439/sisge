@@ -15,6 +15,7 @@ import com.sisge.ms.entity.Usuario;
 import com.sisge.ms.repository.OrganizationRepository;
 import com.sisge.ms.repository.UserOrganizationRepository;
 import com.sisge.ms.repository.UserRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,7 +35,7 @@ class AuthControllerTests {
     void returnsCurrentUserPermissions() {
         CurrentUser user = new CurrentUser(7L, "user@example.com", "user.one", "Ana", "Pérez", "OPERADOR",
                 List.of(new OrganizationDtos.Summary(3L, "Hospital Norte", "HN")),
-                Set.of("PERMISOS_GESTIONAR"), Map.of(3L, Set.of("REEMPLAZANTES_VER")), false);
+                Set.of("PERMISOS_GESTIONAR"), Map.of(3L, Set.of("REEMPLAZANTES_VER")), false, 3L);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(user, null, List.of()));
 
@@ -48,6 +49,8 @@ class AuthControllerTests {
         assertEquals("OPERADOR", me.rolGlobal());
         assertFalse(me.global());
         assertEquals(Set.of("PERMISOS_GESTIONAR", "REEMPLAZANTES_VER"), me.permissions());
+        assertEquals(3L, me.organizacionId());
+        assertEquals(new OrganizationDtos.Summary(3L, "Hospital Norte", "HN"), me.organizacion());
         assertEquals(List.of(new OrganizationDtos.Summary(3L, "Hospital Norte", "HN")), me.organizaciones());
         assertEquals(Set.of("PERMISOS_GESTIONAR"), me.globalPermissions());
         assertEquals(Map.of(3L, Set.of("REEMPLAZANTES_VER")), me.organizationPermissions());
@@ -125,6 +128,40 @@ class AuthControllerTests {
         assertFalse(current.global());
         assertEquals(List.of(new OrganizationDtos.Summary(2L, "Hospital Norte", "HN")), current.organizaciones());
         assertEquals(Map.of(2L, Set.of()), current.organizationPermissions());
+    }
+
+    @Test
+    void picksOldestActiveMembershipAsTheOrganizationScope() {
+        UserRepository repository = mock(UserRepository.class);
+        UserOrganizationRepository memberships = mock(UserOrganizationRepository.class);
+        OrganizationRepository organizations = mock(OrganizationRepository.class);
+        Usuario user = mock(Usuario.class);
+        when(user.getId()).thenReturn(7L);
+        when(user.getEmail()).thenReturn("ana@example.com");
+        when(user.getUsername()).thenReturn("ana");
+        when(user.getNombre()).thenReturn("Ana");
+        when(user.getApellido()).thenReturn("Pérez");
+        when(user.getEstado()).thenReturn("ACTIVO");
+        when(repository.findByEmail("ana@example.com")).thenReturn(Optional.of(user));
+
+        Organizacion norte = organization(2L, "Hospital Norte", "HN");
+        Organizacion sur = organization(3L, "Hospital Sur", "HS");
+        Rol role = mock(Rol.class);
+        when(role.getPermisos()).thenReturn(Set.of());
+        UserOrganization newer = mock(UserOrganization.class);
+        when(newer.getOrganizacion()).thenReturn(norte);
+        when(newer.getRol()).thenReturn(role);
+        when(newer.getCreatedAt()).thenReturn(Instant.parse("2026-01-01T00:00:00Z"));
+        UserOrganization older = mock(UserOrganization.class);
+        when(older.getOrganizacion()).thenReturn(sur);
+        when(older.getRol()).thenReturn(role);
+        when(older.getCreatedAt()).thenReturn(Instant.parse("2025-01-01T00:00:00Z"));
+        when(memberships.findByUsuarioIdAndEstado(7L, "ACTIVO")).thenReturn(List.of(newer, older));
+        var service = new UserAuthenticationService(repository, memberships, organizations);
+
+        CurrentUser current = service.load("ana@example.com");
+
+        assertEquals(3L, current.organizacionId());
     }
 
     private Organizacion organization(Long id, String nombre, String udeo) {

@@ -18,11 +18,19 @@ public record CurrentUser(
         List<OrganizationDtos.Summary> organizaciones,
         Set<String> globalPermissions,
         Map<Long, Set<String>> organizationPermissions,
-        boolean global) {
+        boolean global,
+        Long organizacionId) {
 
     public CurrentUser(Long id, String email, Set<String> globalPermissions,
             Map<Long, Set<String>> organizationPermissions, boolean global) {
-        this(id, email, null, null, null, null, List.of(), globalPermissions, organizationPermissions, global);
+        this(id, email, null, null, null, null, List.of(), globalPermissions, organizationPermissions, global, null);
+    }
+
+    public CurrentUser(Long id, String email, String username, String nombre, String apellido, String rolGlobal,
+            List<OrganizationDtos.Summary> organizaciones, Set<String> globalPermissions,
+            Map<Long, Set<String>> organizationPermissions, boolean global) {
+        this(id, email, username, nombre, apellido, rolGlobal, organizaciones, globalPermissions,
+                organizationPermissions, global, null);
     }
 
     public static CurrentUser get() {
