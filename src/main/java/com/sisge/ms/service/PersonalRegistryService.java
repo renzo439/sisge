@@ -70,9 +70,8 @@ public class PersonalRegistryService {
                     .filter(entry -> entry.getValue().contains("PERSONAL_REVISAR"))
                     .map(java.util.Map.Entry::getKey)
                     .toList();
-            result = organizationIds.isEmpty()
-                    ? Page.empty(pageable)
-                    : imports.findByOrganizacionIdIn(organizationIds, pageable);
+            if (organizationIds.isEmpty()) throw ApiException.forbidden("Missing permission: PERSONAL_REVISAR");
+            result = imports.findByOrganizacionIdIn(organizationIds, pageable);
         }
         return result.map(this::summary);
     }

@@ -1,17 +1,13 @@
 package com.sisge.ms.controller;
 
 import com.sisge.ms.dto.reemplazante.ReemplazanteDtos;
-import com.sisge.ms.entity.ReemplazanteHistorico;
-import com.sisge.ms.exception.ApiException;
-import com.sisge.ms.repository.ReemplazanteHistoricoRepository;
-import com.sisge.ms.security.CurrentUser;
-import java.time.Instant;
+import com.sisge.ms.service.ReemplazanteService;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,10 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/reemplazantes")
 @PreAuthorize("hasAuthority('REEMPLAZANTES_VER')")
 public class ReemplazanteController {
-    private final ReemplazanteHistoricoRepository repository;
+    private final ReemplazanteService service;
 
-    public ReemplazanteController(ReemplazanteHistoricoRepository repository) {
-        this.repository = repository;
+    public ReemplazanteController(ReemplazanteService service) {
+        this.service = service;
     }
 
     @GetMapping
@@ -38,46 +34,37 @@ public class ReemplazanteController {
             @RequestParam(required = false) Long importacionId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaCarga,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        CurrentUser user = CurrentUser.get();
-        if (!user.global() && organizacionId == null) throw ApiException.bad("organizacionId is required");
-        if (organizacionId != null) user.requireForOrganization(organizacionId, "REEMPLAZANTES_VER");
-        else user.requireGlobal("REEMPLAZANTES_VER");
+        return service.list(search(organizacionId, dni, cuil, reemplazante, titular, lugarTrabajo,
+                hospital, udeo, importacionId, fechaCarga), page, size);
+    }
 
-        Specification<ReemplazanteHistorico> specification = (root, query, builder) -> builder.conjunction();
-        if (organizacionId != null) specification = specification.and((root, query, builder) ->
-                builder.equal(root.get("organizacion").get("id"), organizacionId));
-        if (dni != null && !dni.isBlank()) {
-            String normalizedDni = dni.replaceAll("\\D", "");
-            if (!normalizedDni.isEmpty()) specification = specification.and((root, query, builder) ->
-                    builder.like(root.get("dni"), "%" + normalizedDni + "%"));
-        }
-        if (cuil != null) specification = specification.and((root, query, builder) -> builder.equal(root.get("cuil"), cuil));
-        if (reemplazante != null) specification = specification.and((root, query, builder) ->
-                builder.like(builder.lower(root.get("reemplazante")), "%" + reemplazante.toLowerCase() + "%"));
-        if (titular != null) specification = specification.and((root, query, builder) ->
-                builder.like(builder.lower(root.get("titular")), "%" + titular.toLowerCase() + "%"));
-        if (lugarTrabajo != null) specification = specification.and((root, query, builder) -> builder.equal(root.get("lugarTrabajo"), lugarTrabajo));
-        if (hospital != null && !hospital.isBlank()) specification = specification.and((root, query, builder) ->
-                builder.like(builder.lower(root.get("hospitalNombre")), "%" + hospital.toLowerCase() + "%"));
-        if (udeo != null && !udeo.isBlank()) specification = specification.and((root, query, builder) ->
-                builder.equal(root.get("udeo"), udeo));
-        if (importacionId != null) specification = specification.and((root, query, builder) ->
-                builder.equal(root.get("importacion").get("id"), importacionId));
-        if (fechaCarga != null) {
-            Instant from = fechaCarga.atStartOfDay(ZoneOffset.UTC).toInstant();
-            Instant to = fechaCarga.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-            specification = specification.and((root, query, builder) -> builder.between(root.get("fechaCierre"), from, to));
-        }
-        return repository.findAll(specification, PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100)))
-                .map(ReemplazanteDtos::from);
+    @GetMapping(value = "/reporte", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> report(@RequestParam(required = false) Long organizacionId,
+            @RequestParam(required = false) String dni, @RequestParam(required = false) String cuil,
+            @RequestParam(required = false) String reemplazante,
+            @RequestParam(required = false) String titular, @RequestParam(required = false) String lugarTrabajo,
+            @RequestParam(required = false) String hospital, @RequestParam(required = false) String udeo,
+            @RequestParam(required = false) Long importacionId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaCarga) {
+        byte[] pdf = service.pdf(search(organizacionId, dni, cuil, reemplazante, titular, lugarTrabajo,
+                hospital, udeo, importacionId, fechaCarga));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"reporte-reemplazantes-" + LocalDate.now() + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(pdf.length)
+                .body(pdf);
     }
 
     @GetMapping("/{id}")
     public ReemplazanteDtos.View get(@PathVariable Long id) {
-        ReemplazanteHistorico historical = repository.findById(id)
-                .orElseThrow(() -> ApiException.notFound("Historical replacement not found"));
-        if (historical.getOrganizacion() == null) CurrentUser.get().requireGlobal("REEMPLAZANTES_VER");
-        else CurrentUser.get().requireForOrganization(historical.getOrganizacion().getId(), "REEMPLAZANTES_VER");
-        return ReemplazanteDtos.from(historical);
+        return service.get(id);
+    }
+
+    private ReemplazanteService.Search search(Long organizacionId, String dni, String cuil, String reemplazante,
+            String titular, String lugarTrabajo, String hospital, String udeo, Long importacionId,
+            LocalDate fechaCarga) {
+        return new ReemplazanteService.Search(organizacionId, dni, cuil, reemplazante, titular, lugarTrabajo,
+                hospital, udeo, importacionId, fechaCarga);
     }
 }

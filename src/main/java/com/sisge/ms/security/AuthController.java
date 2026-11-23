@@ -1,8 +1,10 @@
 package com.sisge.ms.security;
 
+import com.sisge.ms.dto.organizacion.OrganizationDtos;
 import com.sisge.ms.exception.ApiException;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
@@ -26,14 +28,15 @@ public class AuthController {
         this.jwt = jwt;
     }
 
-    public record Login(@Email String email, @NotBlank String password) {
+    public record Login(@NotBlank @Size(max = 255) String email, @NotBlank String password) {
     }
 
     public record Token(String accessToken, String tokenType) {
     }
 
-    public record Me(Long id, String email, boolean global, Set<String> globalPermissions,
-            Map<Long, Set<String>> organizationPermissions) {
+    public record Me(Long id, String nombre, String apellido, String username, String email, String rolGlobal,
+            boolean global, Set<String> permissions, List<OrganizationDtos.Summary> organizaciones,
+            Set<String> globalPermissions, Map<Long, Set<String>> organizationPermissions) {
     }
 
     @PostMapping("/login")
@@ -48,7 +51,8 @@ public class AuthController {
     @GetMapping("/me")
     public Me me() {
         CurrentUser user = CurrentUser.get();
-        return new Me(user.id(), user.email(), user.global(), user.globalPermissions(),
+        return new Me(user.id(), user.nombre(), user.apellido(), user.username(), user.email(), user.rolGlobal(),
+                user.global(), user.permissions(), user.organizaciones(), user.globalPermissions(),
                 user.organizationPermissions());
     }
 }

@@ -1,7 +1,9 @@
 package com.sisge.ms.security;
 
+import com.sisge.ms.dto.organizacion.OrganizationDtos;
 import com.sisge.ms.exception.ApiException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -9,9 +11,19 @@ import org.springframework.security.core.context.SecurityContextHolder;
 public record CurrentUser(
         Long id,
         String email,
+        String username,
+        String nombre,
+        String apellido,
+        String rolGlobal,
+        List<OrganizationDtos.Summary> organizaciones,
         Set<String> globalPermissions,
         Map<Long, Set<String>> organizationPermissions,
         boolean global) {
+
+    public CurrentUser(Long id, String email, Set<String> globalPermissions,
+            Map<Long, Set<String>> organizationPermissions, boolean global) {
+        this(id, email, null, null, null, null, List.of(), globalPermissions, organizationPermissions, global);
+    }
 
     public static CurrentUser get() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();

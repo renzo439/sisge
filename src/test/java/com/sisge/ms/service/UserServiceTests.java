@@ -61,20 +61,64 @@ class UserServiceTests {
         when(role.getNombre()).thenReturn("OPERADOR");
         when(role.isGlobalRole()).thenReturn(false);
         when(users.findByEmail("operator@example.com")).thenReturn(Optional.empty());
+        when(users.findByUsername("operator.one")).thenReturn(Optional.empty());
         when(organizations.findById(2L)).thenReturn(Optional.of(organization));
         when(roles.findByNombre("OPERADOR")).thenReturn(Optional.of(role));
         var encoder = new BCryptPasswordEncoder();
         var service = new UserService(users, memberships, organizations, roles, encoder);
 
         UserDtos.Created created = service.createForOrganization(2L,
-                new UserDtos.Create("Operator", "One", "Operator@Example.com", "OPERADOR"));
+                new UserDtos.Create("Operator", "One", "Operator.One", "Operator@Example.com", null, "OPERADOR"));
 
         ArgumentCaptor<Usuario> user = ArgumentCaptor.forClass(Usuario.class);
         verify(users).save(user.capture());
         verify(memberships).save(org.mockito.ArgumentMatchers.any());
         assertEquals("operator@example.com", created.email());
-        assertEquals(16, created.passwordTemporal().length());
-        assertTrue(encoder.matches(created.passwordTemporal(), user.getValue().getPasswordHash()));
+        assertEquals("operator.one", created.username());
+        assertEquals("operator.one", user.getValue().getUsername());
+        assertEquals(16, created.password().length());
+        assertTrue(encoder.matches(created.password(), user.getValue().getPasswordHash()));
+    }
+
+    @Test
+    void createsAnOrganizationUserWithAManualPassword() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new CurrentUser(1L, "admin@example.com", Set.of(), Map.of(2L, Set.of("USUARIOS_GESTIONAR")), false),
+                null, List.of()));
+        var organization = org.mockito.Mockito.mock(Organizacion.class);
+        when(organization.getId()).thenReturn(2L);
+        when(organization.getNombre()).thenReturn("Hospital Norte");
+        var role = org.mockito.Mockito.mock(Rol.class);
+        when(role.isGlobalRole()).thenReturn(false);
+        when(users.findByEmail("operator@example.com")).thenReturn(Optional.empty());
+        when(users.findByUsername("operator.one")).thenReturn(Optional.empty());
+        when(organizations.findById(2L)).thenReturn(Optional.of(organization));
+        when(roles.findByNombre("OPERADOR")).thenReturn(Optional.of(role));
+        var encoder = new BCryptPasswordEncoder();
+        var service = new UserService(users, memberships, organizations, roles, encoder);
+
+        UserDtos.Created created = service.createForOrganization(2L,
+                new UserDtos.Create("Operator", "One", "Operator.One", "Operator@Example.com", "ManualPass123!", "OPERADOR"));
+
+        ArgumentCaptor<Usuario> user = ArgumentCaptor.forClass(Usuario.class);
+        verify(users).save(user.capture());
+        assertEquals("ManualPass123!", created.password());
+        assertTrue(encoder.matches("ManualPass123!", user.getValue().getPasswordHash()));
+    }
+
+    @Test
+    void rejectsAUsernameThatIsAlreadyTaken() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new CurrentUser(1L, "admin@example.com", Set.of(), Map.of(2L, Set.of("USUARIOS_GESTIONAR")), false),
+                null, List.of()));
+        when(users.findByEmail("operator@example.com")).thenReturn(Optional.empty());
+        when(users.findByUsername("operator.one")).thenReturn(Optional.of(org.mockito.Mockito.mock(Usuario.class)));
+        var service = new UserService(users, memberships, organizations, roles, new BCryptPasswordEncoder());
+
+        ApiException error = assertThrows(ApiException.class, () -> service.createForOrganization(2L,
+                new UserDtos.Create("Operator", "One", "Operator.One", "Operator@Example.com", null, "OPERADOR")));
+
+        assertEquals(409, error.status().value());
     }
 
     @Test
@@ -241,6 +285,7 @@ class UserServiceTests {
 
         assertEquals(1, result.size());
         assertEquals("ana@example.com", result.get(0).email());
+        assertEquals("ana", result.get(0).username());
         assertEquals("CONSULTA", result.get(0).rol());
         assertEquals("ACTIVO", result.get(0).estado());
     }
@@ -293,8 +338,59 @@ class UserServiceTests {
         assertEquals("ana@example.com", result.get(0).email());
         assertNull(result.get(0).rolGlobal());
 
+        assertEquals(1, service.listUsers("bruno").size());
+
         List<UserDtos.UserSummary> all = service.listUsers(null);
         assertEquals(2, all.size());
+    }
+
+    @Test
+    void listsAllUsersWithTheirOrganizationAndRoleForTheGlobalAdmin() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new CurrentUser(1L, "admin@example.com", Set.of("USUARIOS_GESTIONAR"), Map.of(), true),
+                null, List.of()));
+        var ana = user(7L, "Perez", "Ana", "ana@example.com", null);
+        var generalAdmin = user(9L, "General", "Administrador", "root@example.com", null);
+        var organization = org.mockito.Mockito.mock(Organizacion.class);
+        when(organization.getId()).thenReturn(2L);
+        when(organization.getNombre()).thenReturn("Hospital Norte");
+        var role = org.mockito.Mockito.mock(Rol.class);
+        when(role.getNombre()).thenReturn("OPERADOR");
+        var membership = org.mockito.Mockito.mock(UserOrganization.class);
+        when(membership.getUsuario()).thenReturn(ana);
+        when(membership.getOrganizacion()).thenReturn(organization);
+        when(membership.getRol()).thenReturn(role);
+        when(membership.getEstado()).thenReturn("ACTIVO");
+        when(membership.getCreatedAt()).thenReturn(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        when(memberships.findAll()).thenReturn(List.of(membership));
+        when(users.findAll()).thenReturn(List.of(ana, generalAdmin));
+        var service = new UserService(users, memberships, organizations, roles, new BCryptPasswordEncoder());
+
+        List<UserDtos.UserOrganizationRow> rows = service.listUserOrganizations(null);
+
+        assertEquals(2, rows.size());
+        UserDtos.UserOrganizationRow anaRow = rows.stream().filter(row -> row.usuarioId().equals(7L)).findFirst().orElseThrow();
+        assertEquals("ana", anaRow.username());
+        assertEquals(2L, anaRow.organizacionId());
+        assertEquals("Hospital Norte", anaRow.organizacionNombre());
+        assertEquals("OPERADOR", anaRow.rol());
+        assertEquals("ACTIVO", anaRow.membresiaEstado());
+        UserDtos.UserOrganizationRow adminRow = rows.stream().filter(row -> row.usuarioId().equals(9L)).findFirst().orElseThrow();
+        assertNull(adminRow.organizacionId());
+        assertNull(adminRow.rol());
+        assertEquals(1, service.listUserOrganizations("hospital").size());
+    }
+
+    @Test
+    void requiresGlobalPermissionToListUsersWithOrganizations() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new CurrentUser(1L, "operador@example.com", Set.of(), Map.of(2L, Set.of("USUARIOS_GESTIONAR")), false),
+                null, List.of()));
+        var service = new UserService(users, memberships, organizations, roles, new BCryptPasswordEncoder());
+
+        ApiException error = assertThrows(ApiException.class, () -> service.listUserOrganizations(null));
+
+        assertEquals(403, error.status().value());
     }
 
     @Test
@@ -342,6 +438,7 @@ class UserServiceTests {
         org.mockito.Mockito.lenient().when(user.getApellido()).thenReturn(apellido);
         org.mockito.Mockito.lenient().when(user.getNombre()).thenReturn(nombre);
         org.mockito.Mockito.lenient().when(user.getEmail()).thenReturn(email);
+        org.mockito.Mockito.lenient().when(user.getUsername()).thenReturn(email.substring(0, email.indexOf('@')));
         org.mockito.Mockito.lenient().when(user.getEstado()).thenReturn("ACTIVO");
         org.mockito.Mockito.lenient().when(user.getRolGlobal()).thenReturn(globalRole);
         return user;

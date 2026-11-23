@@ -12,9 +12,12 @@ import com.sisge.ms.repository.UserOrganizationRepository;
 import com.sisge.ms.repository.UserRepository;
 import com.sisge.ms.security.CurrentUser;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -46,9 +49,13 @@ public class UserService {
     @Transactional
     public UserDtos.Created createForOrganization(Long organizationId, UserDtos.Create request) {
         CurrentUser.get().requireForOrganization(organizationId, USER_MANAGEMENT);
-        String email = request.email().trim().toLowerCase(java.util.Locale.ROOT);
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        String username = request.username().trim().toLowerCase(Locale.ROOT);
         if (users.findByEmail(email).isPresent()) {
             throw ApiException.conflict("A user with that email already exists");
+        }
+        if (users.findByUsername(username).isPresent()) {
+            throw ApiException.conflict("A user with that username already exists");
         }
 
         var organization = organizations.findById(organizationId)
@@ -59,17 +66,23 @@ public class UserService {
             throw ApiException.bad("A global role cannot be assigned to an organization user");
         }
 
-        String temporaryPassword = temporaryPassword();
+        String password = request.password();
+        boolean manualPassword = password != null && !password.isBlank();
+        if (manualPassword && password.length() < 8) {
+            throw ApiException.bad("Password must have at least 8 characters");
+        }
+        String effectivePassword = manualPassword ? password : temporaryPassword();
         Usuario user = new Usuario();
-        user.register(request.nombre().trim(), request.apellido().trim(), email, passwordEncoder.encode(temporaryPassword));
+        user.register(request.nombre().trim(), request.apellido().trim(), email, username,
+                passwordEncoder.encode(effectivePassword));
         users.save(user);
 
         UserOrganization membership = new UserOrganization();
         membership.assign(user, organization, role);
         memberships.save(membership);
 
-        return new UserDtos.Created(user.getId(), user.getNombre(), user.getApellido(), user.getEmail(),
-                organization.getId(), organization.getNombre(), role.getNombre(), temporaryPassword);
+        return new UserDtos.Created(user.getId(), user.getNombre(), user.getApellido(), user.getUsername(),
+                user.getEmail(), organization.getId(), organization.getNombre(), role.getNombre(), effectivePassword);
     }
 
     @Transactional
@@ -145,6 +158,31 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public List<UserDtos.UserOrganizationRow> listUserOrganizations(String query) {
+        CurrentUser.get().requireGlobal(USER_MANAGEMENT);
+        String term = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        Map<Long, List<UserOrganization>> byUser = memberships.findAll().stream()
+                .collect(Collectors.groupingBy(membership -> membership.getUsuario().getId()));
+        List<UserDtos.UserOrganizationRow> rows = new ArrayList<>();
+        for (Usuario user : users.findAll()) {
+            List<UserOrganization> userMemberships = byUser.getOrDefault(user.getId(), List.of());
+            if (userMemberships.isEmpty()) {
+                rows.add(organizationRow(user, null));
+            } else {
+                userMemberships.forEach(membership -> rows.add(organizationRow(user, membership)));
+            }
+        }
+        return rows.stream()
+                .filter(row -> matchesOrganizationRow(row, term))
+                .sorted(Comparator
+                        .comparing(UserDtos.UserOrganizationRow::organizacionNombre, NAME_ORDER)
+                        .thenComparing(UserDtos.UserOrganizationRow::apellido, NAME_ORDER)
+                        .thenComparing(UserDtos.UserOrganizationRow::nombre, NAME_ORDER)
+                        .thenComparing(UserDtos.UserOrganizationRow::username, NAME_ORDER))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public UserDtos.UserSummary getUser(Long usuarioId) {
         CurrentUser.get().requireGlobal(USER_MANAGEMENT);
         return userSummary(users.findById(usuarioId)
@@ -153,21 +191,42 @@ public class UserService {
 
     private UserDtos.Membership membershipDto(UserOrganization membership) {
         Usuario user = membership.getUsuario();
-        return new UserDtos.Membership(user.getId(), user.getNombre(), user.getApellido(), user.getEmail(),
-                membership.getEstado(), membership.getRol().getNombre(), membership.getCreatedAt());
+        return new UserDtos.Membership(user.getId(), user.getNombre(), user.getApellido(), user.getUsername(),
+                user.getEmail(), membership.getEstado(), membership.getRol().getNombre(), membership.getCreatedAt());
     }
 
     private UserDtos.UserSummary userSummary(Usuario user) {
-        return new UserDtos.UserSummary(user.getId(), user.getNombre(), user.getApellido(), user.getEmail(),
-                user.getEstado(), user.getRolGlobal() == null ? null : user.getRolGlobal().getNombre());
+        return new UserDtos.UserSummary(user.getId(), user.getNombre(), user.getApellido(), user.getUsername(),
+                user.getEmail(), user.getEstado(), user.getRolGlobal() == null ? null : user.getRolGlobal().getNombre());
+    }
+
+    private UserDtos.UserOrganizationRow organizationRow(Usuario user, UserOrganization membership) {
+        return new UserDtos.UserOrganizationRow(user.getId(), user.getNombre(), user.getApellido(),
+                user.getUsername(), user.getEmail(), user.getEstado(),
+                user.getRolGlobal() == null ? null : user.getRolGlobal().getNombre(),
+                membership == null ? null : membership.getOrganizacion().getId(),
+                membership == null ? null : membership.getOrganizacion().getNombre(),
+                membership == null ? null : membership.getRol().getNombre(),
+                membership == null ? null : membership.getEstado(),
+                membership == null ? null : membership.getCreatedAt());
+    }
+
+    private boolean matchesOrganizationRow(UserDtos.UserOrganizationRow row, String term) {
+        if (term.isEmpty()) {
+            return true;
+        }
+        return contains(row.email(), term) || contains(row.username(), term)
+                || contains(row.nombre(), term) || contains(row.apellido(), term)
+                || contains(row.organizacionNombre(), term) || contains(row.rol(), term)
+                || contains(row.rolGlobal(), term);
     }
 
     private boolean matches(Usuario user, String term) {
         if (term.isEmpty()) {
             return true;
         }
-        return contains(user.getEmail(), term) || contains(user.getNombre(), term)
-                || contains(user.getApellido(), term);
+        return contains(user.getEmail(), term) || contains(user.getUsername(), term)
+                || contains(user.getNombre(), term) || contains(user.getApellido(), term);
     }
 
     private boolean contains(String value, String term) {

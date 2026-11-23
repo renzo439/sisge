@@ -27,6 +27,7 @@ El proyecto usa Maven Wrapper, por lo que no es necesario instalar Maven globalm
    JWT_SECRET=un-secreto-aleatorio-de-al-menos-32-caracteres
    BOOTSTRAP_ADMIN_EMAIL=admin@example.com
    BOOTSTRAP_ADMIN_PASSWORD=una-clave-de-administrador-segura
+   BOOTSTRAP_ADMIN_USERNAME=admin
    ```
 
 3. Inicie la base de datos y la aplicación:
@@ -75,6 +76,7 @@ docker compose up -d
     mysql -u root -p sisge < database\07-permisos-gestionar.sql
     mysql -u root -p sisge < database\08-historical-hospital-raw.sql
     mysql -u root -p sisge < database\09-historical-dni.sql
+    mysql -u root -p sisge < database\10-usuario-username.sql
    ```
 
 3. Para reemplazar algún valor de `.env` solo durante la sesión actual de PowerShell, defina las variables de entorno:
@@ -86,6 +88,7 @@ docker compose up -d
    $env:JWT_SECRET = "un-secreto-aleatorio-de-al-menos-32-caracteres"
    $env:BOOTSTRAP_ADMIN_EMAIL = "admin@example.com"
    $env:BOOTSTRAP_ADMIN_PASSWORD = "una-clave-de-administrador-segura"
+   $env:BOOTSTRAP_ADMIN_USERNAME = "admin"
    ```
 
 4. Inicie la aplicación:
@@ -96,7 +99,7 @@ docker compose up -d
 
    De forma predeterminada queda disponible en `http://localhost:8081`. Para usar otro puerto, asigne `SERVER_PORT` en `.env` con el formato `SERVER_PORT=8082`.
 
-En el primer arranque, el administrador general se crea únicamente si `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD` tienen valores y el correo todavía no existe. Su contraseña se almacena con BCrypt. Quite `BOOTSTRAP_ADMIN_PASSWORD` de su entorno después de provisionarlo.
+En el primer arranque, el administrador general se crea únicamente si `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD` tienen valores y el correo todavía no existe. Su nombre de usuario se toma de `BOOTSTRAP_ADMIN_USERNAME` (por defecto `admin`), se normaliza a minúsculas y debe ser único. Su contraseña se almacena con BCrypt. Quite `BOOTSTRAP_ADMIN_PASSWORD` de su entorno después de provisionarlo.
 
 ## Compilación y pruebas
 
@@ -108,7 +111,7 @@ Si usa IntelliJ IDEA, recargue el proyecto Maven después de abrirlo o cambiar e
 
 ## Autenticación
 
-Obtenga un token JWT:
+Obtenga un token JWT. El campo `email` acepta tanto el correo como el nombre de usuario (no distingue mayúsculas):
 
 ```powershell
 $body = @{
@@ -134,7 +137,13 @@ Invoke-RestMethod `
   -Headers @{ Authorization = "Bearer $token" }
 ```
 
-Devuelve `id`, `email`, `global`, `globalPermissions` y `organizationPermissions` (permisos por id de organización). El módulo de reemplazos requiere el permiso `REEMPLAZANTES_VER`, global o en la organización consultada. El backend lo valida con Spring Security y el frontend debe usar esta respuesta para mostrar u ocultar el módulo.
+Devuelve `id`, `nombre`, `apellido`, `username`, `email`, `rolGlobal`, `global`, `permissions`, `organizaciones`, `globalPermissions` y `organizationPermissions` (permisos por id de organización).
+
+`permissions` es la unión efectiva de `globalPermissions` y de todos los `organizationPermissions`; es la fuente que debe usar el frontend para mostrar u ocultar módulos. `organizaciones` es una lista de `{ id, nombre, udeo }` para la cabecera: para un usuario común incluye solo las organizaciones donde tiene membresía activa; para un usuario global incluye **todas** las organizaciones del sistema, ya que puede verlas a todas. Está ordenada por nombre y **no debe usarse para inferir permisos**. Para permisos por organización usar `organizationPermissions[id]`; para permisos globales, `globalPermissions`. El frontend debe refrescar `/auth/me` en login, recarga y cada cambio de usuario/roles/membresías.
+
+La autorización se aplica siempre en el backend: un usuario con solo `REEMPLAZANTES_VER` recibe `403` en endpoints de organización, roles, permisos, administración, personal, importaciones, etc. En `/api/v1/reemplazantes` solo puede consultar el histórico y el PDF; si no es global debe enviar `organizacionId` y este debe estar entre sus organizaciones con `REEMPLAZANTES_VER`. Ocultar botones en el front es solo UX, no seguridad.
+
+Los permisos de acceso por sección son `REEMPLAZANTES_VER`, `DASHBOARD_VER`, `LEGAJOS_VER` y `AUDITORIA_VER`. Un `*_VER` habilita la sección; las acciones dentro de cada módulo requieren permisos adicionales propios (por ejemplo `REEMPLAZANTES_IMPORTAR` o los `IMPORTACIONES_*`). Están cargados en `database/02-reference-data.sql` para instalaciones nuevas y en `database/11-section-view-permissions.sql` para bases existentes; `ADMIN_GENERAL` los recibe todos.
 
 ## Documentación de la API (Swagger)
 
@@ -197,17 +206,49 @@ POST /api/v1/organizaciones/{organizacionId}/usuarios
 PUT  /api/v1/organizaciones/{organizacionId}/usuarios/{usuarioId}/rol
 ```
 
-El listado y el detalle devuelven `usuarioId`, `nombre`, `apellido`, `email`, `estado`, `rol` y `createdAt` de la membresía. El cambio de rol recibe `{ "rol": "OPERADOR" }`.
+El listado y el detalle devuelven `usuarioId`, `nombre`, `apellido`, `username`, `email`, `estado`, `rol` y `createdAt` de la membresía. El cambio de rol recibe `{ "rol": "OPERADOR" }`.
+
+El alta recibe:
+
+```json
+{
+  "nombre": "Ana",
+  "apellido": "Pérez",
+  "username": "ana.perez",
+  "email": "ana@example.com",
+  "password": "ClaveSegura123!",
+  "rol": "OPERADOR"
+}
+```
+
+`username` es obligatorio, único, se normaliza a minúsculas y admite letras, dígitos, puntos, guiones y guiones bajos. `password` es opcional: si se omite o está vacío se genera una contraseña temporal de 16 caracteres; si se envía debe tener entre 8 y 100 caracteres. En ambos casos se almacena con BCrypt y la contraseña efectiva se devuelve en el campo `password` de la respuesta (201). Ejemplo de la respuesta:
+
+```json
+{
+  "id": 12,
+  "nombre": "Ana",
+  "apellido": "Pérez",
+  "username": "ana.perez",
+  "email": "ana@example.com",
+  "organizacionId": 2,
+  "organizacionNombre": "Hospital Norte",
+  "rol": "OPERADOR",
+  "password": "ClaveSegura123!"
+}
+```
 
 Los usuarios se consultan globalmente y su rol global se edita desde la administración central, con el permiso global `USUARIOS_GESTIONAR`:
 
 ```text
 GET /api/v1/admin/usuarios?q={texto}
+GET /api/v1/admin/usuarios/membresias?q={texto}
 GET /api/v1/admin/usuarios/{usuarioId}
 PUT /api/v1/admin/usuarios/{usuarioId}/rol-global
 ```
 
-El listado global acepta `q` para buscar por nombre, apellido o email e incluye el `rolGlobal` de cada usuario (o `null`). El rol global se asigna con `{ "rol": "ADMIN_GENERAL" }` o se quita con `rol` nulo o vacío.
+El listado global acepta `q` para buscar por nombre, apellido, username o email e incluye el `rolGlobal` de cada usuario (o `null`). El rol global se asigna con `{ "rol": "ADMIN_GENERAL" }` o se quita con `rol` nulo o vacío.
+
+`GET /api/v1/admin/usuarios/membresias` devuelve la grilla global para administración: una fila por usuario y organización con `usuarioId`, `nombre`, `apellido`, `username`, `email`, `estado`, `rolGlobal`, `organizacionId`, `organizacionNombre`, `rol`, `membresiaEstado` y `createdAt` (alta en esa organización). Un usuario sin membresía (por ejemplo el administrador inicial) aparece con `organizacionId`, `organizacionNombre`, `rol` y `createdAt` en `null`. Acepta el mismo `q` y busca además por organización y rol. Requiere el permiso global `USUARIOS_GESTIONAR`.
 
 Un rol global no puede asignarse a una membresía de organización y solo un rol global puede usarse como rol global. Los cambios de permisos son efectivos de inmediato: los permisos se evalúan contra la base en cada petición, sin depender del token emitido.
 
@@ -224,6 +265,8 @@ Para migrar un Excel histórico que ya fue revisado, un administrador central co
 Para un Excel histórico consolidado con varios hospitales, use `POST /api/v1/admin/importaciones/migrar-historico-consolidado` con una parte `file` de tipo `multipart/form-data`. El archivo debe incluir las columnas `Hospital` y `UDEO` antes de las columnas habituales. Los valores de `Hospital` y `UDEO` se guardan literalmente tal como vienen en el Excel: no se reemplazan por un id ni se crean organizaciones automáticamente. Se genera una importación cerrada por cada combinación de `Hospital` y `UDEO`; la organización queda nula y puede asociarse más adelante. Para archivos grandes, las filas se insertan en lotes de 500 y la respuesta contiene solo el resumen de cada importación creada. Si alguna fila tiene errores bloqueantes, la respuesta `409` incluye en `details` la fila de Excel (`fila`) y las reglas incumplidas (`errores`), y no se migra ninguna fila.
 
 El histórico se puede consultar por `organizacionId`, `importacionId`, `reemplazante`, `dni`, `cuil`, `titular`, `lugarTrabajo`, `fechaCarga`, `hospital` o `udeo`. El `dni` se deriva del CUIL al migrar. Las filas migradas sin organización solo son visibles para usuarios globales con `REEMPLAZANTES_VER` hasta que se les asocie una organización.
+
+Para imprimir los resultados de una búsqueda, `GET /api/v1/reemplazantes/reporte` acepta **los mismos filtros** que la consulta (salvo `page` y `size`) y devuelve un PDF con las columnas `Reemplazante`, `Desde`, `Hasta` y `Hospital` (con su UDEO entre paréntesis). El PDF incluye todas las filas que coinciden con los filtros, ordenadas por id, no solo la página actual; está limitado a 10.000 registros y lo indica en el documento si se alcanza el límite. Requiere `REEMPLAZANTES_VER` y aplica las mismas reglas de organización que la consulta. La respuesta usa `Content-Type: application/pdf` y `Content-Disposition: inline; filename="reporte-reemplazantes-YYYY-MM-DD.pdf"`.
 
 Estados permitidos:
 

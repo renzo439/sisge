@@ -1,6 +1,7 @@
 package com.sisge.ms.service;
 
 import com.sisge.ms.dto.organizacion.OrganizationDtos;
+import com.sisge.ms.exception.ApiException;
 import com.sisge.ms.repository.OrganizationRepository;
 import com.sisge.ms.security.CurrentUser;
 import java.util.Comparator;
@@ -31,10 +32,13 @@ public class OrganizationService {
                     .toList();
         }
 
-        return organizations.findAllById(user.organizationPermissions().entrySet().stream()
-                        .filter(entry -> entry.getValue().contains(PERSONAL_IMPORTAR))
-                        .map(java.util.Map.Entry::getKey)
-                        .toList())
+        List<Long> allowedIds = user.organizationPermissions().entrySet().stream()
+                .filter(entry -> entry.getValue().contains(PERSONAL_IMPORTAR))
+                .map(java.util.Map.Entry::getKey)
+                .toList();
+        if (allowedIds.isEmpty()) throw ApiException.forbidden("Missing permission: " + PERSONAL_IMPORTAR);
+
+        return organizations.findAllById(allowedIds)
                 .stream()
                 .sorted(Comparator.comparing(organization -> organization.getNombre().toLowerCase()))
                 .map(organization -> new OrganizationDtos.Summary(

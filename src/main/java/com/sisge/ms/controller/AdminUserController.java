@@ -26,6 +26,11 @@ public class AdminUserController {
         return service.listUsers(q);
     }
 
+    @GetMapping("/membresias")
+    public List<UserDtos.UserOrganizationRow> listOrganizations(@RequestParam(required = false) String q) {
+        return service.listUserOrganizations(q);
+    }
+
     @GetMapping("/{usuarioId}")
     public UserDtos.UserSummary get(@PathVariable Long usuarioId) {
         return service.getUser(usuarioId);

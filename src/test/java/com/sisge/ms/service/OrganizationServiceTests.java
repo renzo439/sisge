@@ -1,6 +1,7 @@
 package com.sisge.ms.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
 
 import com.sisge.ms.entity.Organizacion;
@@ -41,5 +42,18 @@ class OrganizationServiceTests {
 
         assertEquals(1, result.size());
         assertEquals("Hospital Norte", result.get(0).nombre());
+    }
+
+    @Test
+    void deniesUsersWithoutPersonnelImportPermission() {
+        var user = new CurrentUser(1L, "reemplazos@example.com", Set.of(),
+                Map.of(2L, Set.of("REEMPLAZANTES_VER")), false);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null, List.of()));
+
+        var error = assertThrows(com.sisge.ms.exception.ApiException.class,
+                () -> new OrganizationService(organizations).listForPersonnelImport());
+
+        assertEquals(403, error.status().value());
     }
 }
